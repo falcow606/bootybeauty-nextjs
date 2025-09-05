@@ -17,31 +17,31 @@ type OfferRow = {
   Merchant?: string
 }
 
-// 🔑 Nouvelle version avec "tag"
-async function fetchCSV(url: string, tag: 'content' | 'offers') {
+async function fetchCSV<T extends Record<string, unknown>>(
+  url: string,
+  tag: 'content' | 'offers'
+): Promise<T[]> {
   if (!url) return []
-  const res = await fetch(url, {
-    next: { tags: [tag], revalidate: 0 }, // associe le fetch à un tag, pas de TTL fixe
-  })
+  const res = await fetch(url, { next: { tags: [tag], revalidate: 0 } })
   const text = await res.text()
-  const { data } = Papa.parse(text, { header: true })
-  return data as any[]
+  const parsed = Papa.parse<T>(text, { header: true, skipEmptyLines: true })
+  return parsed.data
 }
 
 export async function getContentBySlug(slug: string) {
-  const rows = await fetchCSV(CONTENT_URL, 'content') as ContentRow[]
-  const row = rows.find(r => r.Slug === slug)
+  const rows = await fetchCSV<ContentRow>(CONTENT_URL, 'content')
+  const row = rows.find((r) => r.Slug === slug)
   if (!row) return null
   const schema = row.Schema_JSON ? JSON.parse(row.Schema_JSON) : null
   return { slug: row.Slug, title: row.Title, html: row.Texte_HTML, schema }
 }
 
 export async function getFeatured() {
-  const rows = await fetchCSV(CONTENT_URL, 'content') as ContentRow[]
+  const rows = await fetchCSV<ContentRow>(CONTENT_URL, 'content')
   return rows
-    .filter(r => r.Type === 'fiche')
+    .filter((r) => r.Type === 'fiche')
     .slice(0, 4)
-    .map(r => ({
+    .map((r) => ({
       slug: r.Slug,
       title: r.Title,
       excerpt: (r.Texte_HTML || '').slice(0, 180) + '…',
@@ -49,14 +49,14 @@ export async function getFeatured() {
 }
 
 export async function getTop10() {
-  const rows = await fetchCSV(CONTENT_URL, 'content') as ContentRow[]
-  const offers = await fetchCSV(OFFERS_URL, 'offers') as OfferRow[]
+  const rows = await fetchCSV<ContentRow>(CONTENT_URL, 'content')
+  const offers = await fetchCSV<OfferRow>(OFFERS_URL, 'offers')
   const affiliate =
-    offers.find(o => (o.Affiliate_URL || '').includes('amazon.fr'))?.Affiliate_URL || ''
+    offers.find((o) => (o.Affiliate_URL || '').includes('amazon.fr'))?.Affiliate_URL || ''
   return rows
-    .filter(r => r.Type === 'fiche')
+    .filter((r) => r.Type === 'fiche')
     .slice(0, 10)
-    .map(r => ({
+    .map((r) => ({
       slug: r.Slug,
       title: r.Title,
       affiliate:
