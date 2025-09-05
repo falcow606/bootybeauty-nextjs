@@ -5,8 +5,20 @@ import Link from 'next/link'
 export const metadata: Metadata = {
   title: 'Booty Beauty Project',
   description: 'Comparatifs et fiches produits beauté — niche Booty Beauty.',
-metadataBase: new URL('https://bootybeauty-nextjs.vercel.app'),
-
+  metadataBase: new URL('https://bootybeauty-nextjs.vercel.app'),
+  verification: {
+    google: 'google2093143cb4e5fd91', // ✅ code de Search Console
+  },
+  alternates: {
+    canonical: 'https://bootybeauty-nextjs.vercel.app',
+  },
+  openGraph: {
+    siteName: 'Booty Beauty Project',
+    url: 'https://bootybeauty-nextjs.vercel.app',
+    type: 'website',
+    title: 'Booty Beauty Project',
+    description: 'Comparatifs et fiches produits beauté — niche Booty Beauty.',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -23,7 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {/* Navigation */}
             <nav className="text-sm space-x-4">
               <Link href="/top-10/booty-beauty-2025">Top 10</Link>
-              {/* Lien externe reste en <a> */}
+              {/* Lien externe → <a> OK */}
               <a
                 href="https://sites.google.com/view/bootybeautyproject"
                 target="_blank"
