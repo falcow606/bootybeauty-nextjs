@@ -24,8 +24,11 @@ async function fetchCSV<T extends Record<string, unknown>>(
   if (!url) return []
   const res = await fetch(url, { next: { tags: [tag], revalidate: 0 } })
   const text = await res.text()
-  const parsed = Papa.parse<T>(text, { header: true, skipEmptyLines: true })
-  return parsed.data
+
+  // ⚠️ Pas de générique ici (CI Vercel peut voir parse comme "any")
+  const parsed = Papa.parse(text, { header: true, skipEmptyLines: true })
+  const data = (parsed.data as unknown[]) as T[]
+  return data
 }
 
 export async function getContentBySlug(slug: string) {
