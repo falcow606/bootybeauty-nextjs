@@ -6,7 +6,6 @@ import AffiliateLink from '@/components/AffiliateLink'
 
 export const revalidate = 3600
 
-// ---------- Types JSON-LD (sans any) ----------
 type MonetaryAmountLD = {
   '@type': 'MonetaryAmount'
   value?: number | string
@@ -51,7 +50,6 @@ type ProductLD = {
   offers?: OfferLD | OfferLD[]
 }
 
-// ---------- Helpers de typage / sanitation ----------
 function isRecord(x: unknown): x is Record<string, unknown> {
   return typeof x === 'object' && x !== null
 }
@@ -67,7 +65,6 @@ function isProductLD(x: unknown): x is ProductLD {
 function normalizeCurrency(code?: string): string | undefined {
   if (!code) return undefined
   const c = code.trim().toUpperCase()
-  // assure un code ISO 4217 (ex: EUR, USD…)
   return /^[A-Z]{3}$/.test(c) ? c : undefined
 }
 
@@ -90,7 +87,6 @@ function sanitizeProduct(input: ProductLD): ProductLD {
   }
 }
 
-// ---------- Page ----------
 type Params = Promise<{ slug: string }>
 
 export default async function ProductPage({ params }: { params: Params }) {
@@ -105,12 +101,10 @@ export default async function ProductPage({ params }: { params: Params }) {
     schema: unknown
   }
 
-  // Construit le JSON-LD en sécurité, sans any
   let jsonLd: ProductLD | null = null
   if (isProductLD(schema)) {
     jsonLd = sanitizeProduct(schema)
   } else {
-    // Fallback minimal si pas de schema dans le Sheet
     jsonLd = {
       '@context': 'https://schema.org',
       '@type': 'Product',
@@ -118,7 +112,6 @@ export default async function ProductPage({ params }: { params: Params }) {
     }
   }
 
-  // Lien affilié (si présent dans le schema.offers)
   const offers = ensureOfferArray(jsonLd.offers)
   const affiliate =
     offers?.find((o) => typeof o.url === 'string' && o.url.length > 0)?.url ?? ''
@@ -131,16 +124,24 @@ export default async function ProductPage({ params }: { params: Params }) {
 
       <h1 className="text-3xl md:text-4xl font-semibold">{title}</h1>
 
-      {/* CTA affilié si dispo */}
-      {affiliate && <AffiliateLink href={affiliate} className="mt-2" />}
+      {/* CTA affilié si dispo (children requis) */}
+      {affiliate && (
+        <AffiliateLink
+          href={affiliate}
+          merchant="Amazon"
+          slug={slug}
+          pos="fiche"
+          className="inline-flex items-center rounded-xl bg-[#C4A092] px-4 py-2 text-white hover:opacity-90"
+        >
+          Voir l’offre
+        </AffiliateLink>
+      )}
 
-      {/* Contenu HTML éditorial depuis le Sheet */}
       <article
         className="prose prose-neutral max-w-none"
         dangerouslySetInnerHTML={{ __html: html }}
       />
 
-      {/* JSON-LD Product proprement typé */}
       {jsonLd && (
         <script
           type="application/ld+json"
