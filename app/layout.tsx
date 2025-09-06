@@ -7,11 +7,9 @@ export const metadata: Metadata = {
   description: 'Comparatifs et fiches produits beauté — niche Booty Beauty.',
   metadataBase: new URL('https://bootybeauty-nextjs.vercel.app'),
   verification: {
-    google: 'google2093143cb4e5fd91', // ✅ code Search Console
+    google: 'google2093143cb4e5fd91',
   },
-  alternates: {
-    canonical: 'https://bootybeauty-nextjs.vercel.app',
-  },
+  alternates: { canonical: 'https://bootybeauty-nextjs.vercel.app' },
   openGraph: {
     siteName: 'Booty Beauty Project',
     url: 'https://bootybeauty-nextjs.vercel.app',
@@ -27,22 +25,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <header className="border-b border-gray-200/60">
           <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-            {/* Logo → lien interne */}
-            <Link href="/" className="font-semibold">
-              Booty Beauty Project
-            </Link>
-
-            {/* Navigation */}
+            <Link href="/" className="font-semibold">Booty Beauty Project</Link>
             <nav className="text-sm space-x-4">
               <Link href="/top-10/booty-beauty-2025">Top 10</Link>
-              {/* Lien externe → <a> OK */}
-              <a
-                href="https://sites.google.com/view/bootybeautyproject"
-                target="_blank"
-                rel="noreferrer"
-              >
-                À propos
-              </a>
+              <a href="https://sites.google.com/view/bootybeautyproject" target="_blank" rel="noreferrer">À propos</a>
             </nav>
           </div>
         </header>
@@ -53,20 +39,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           © {new Date().getFullYear()} Booty Beauty Project
         </footer>
 
-        {/* Google Analytics (GA4) */}
+        {/* Google Analytics (GA4) + mode debug via ?ga_debug=1 */}
         {process.env.NEXT_PUBLIC_GA_ID && (
           <>
-            <script
-              async
-              src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA_ID}`}
-            />
+            <script async src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA_ID}`} />
             <script
               dangerouslySetInnerHTML={{
                 __html: `
-                  window.dataLayer = window.dataLayer || [];
-                  function gtag(){dataLayer.push(arguments);}
-                  gtag('js', new Date());
-                  gtag('config', '${process.env.NEXT_PUBLIC_GA_ID}');
+                  (function() {
+                    window.dataLayer = window.dataLayer || [];
+                    function gtag(){dataLayer.push(arguments);}
+                    window.gtag = gtag;
+                    gtag('js', new Date());
+
+                    // Active le mode debug si l'URL contient ?ga_debug=1
+                    var debug = typeof window !== 'undefined' && window.location && window.location.search.indexOf('ga_debug=1') > -1;
+                    gtag('config', '${process.env.NEXT_PUBLIC_GA_ID}', { debug_mode: debug });
+                  })();
                 `,
               }}
             />
