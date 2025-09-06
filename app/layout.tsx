@@ -39,7 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           © {new Date().getFullYear()} Booty Beauty Project
         </footer>
 
-        {/* Google Analytics (GA4) + mode debug via ?ga_debug=1 */}
+        {/* Google Analytics (GA4) + auto-tracking clics sortants/affiliés + debug via ?ga_debug=1 */}
         {process.env.NEXT_PUBLIC_GA_ID && (
           <>
             <script async src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA_ID}`} />
@@ -52,9 +52,46 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     window.gtag = gtag;
                     gtag('js', new Date());
 
-                    // Active le mode debug si l'URL contient ?ga_debug=1
+                    // Mode debug si l'URL contient ?ga_debug=1
                     var debug = typeof window !== 'undefined' && window.location && window.location.search.indexOf('ga_debug=1') > -1;
                     gtag('config', '${process.env.NEXT_PUBLIC_GA_ID}', { debug_mode: debug });
+
+                    // --- Auto-tracking des clics sortants & d'affiliation ---
+                    document.addEventListener('click', function(e) {
+                      var el = e.target;
+                      if (!el) return;
+                      var a = el.closest && el.closest('a');
+                      if (!a) return;
+
+                      var href = a.getAttribute('href') || '';
+                      if (!href) return;
+
+                      var sameHost = false;
+                      try { sameHost = new URL(href, location.href).host === location.host; } catch(_) {}
+
+                      var isExternal = href.startsWith('http') && !sameHost;
+                      var isAffiliateTag =
+                        /[?&](tag|aff_id|affid|aff|utm_affiliate)=/i.test(href) ||
+                        /awin|cj\\.com|rakuten|partnerize/i.test(href);
+                      var isAffiliateData = a.dataset && a.dataset.aff === '1';
+                      var isAffiliate = isAffiliateTag || isAffiliateData;
+
+                      if (isExternal) {
+                        gtag('event', 'outbound_click', {
+                          link_url: href,
+                          link_text: (a.textContent || '').trim().slice(0,100),
+                        });
+                      }
+
+                      if (isAffiliate) {
+                        gtag('event', 'affiliate_click', {
+                          link_url: href,
+                          merchant: a.dataset.merchant || null,
+                          product_slug: a.dataset.slug || null,
+                          position: a.dataset.pos || null
+                        });
+                      }
+                    }, { capture: true, passive: true });
                   })();
                 `,
               }}
