@@ -1,153 +1,68 @@
-// app/p/[slug]/page.tsx
-import { notFound } from 'next/navigation'
-import Link from 'next/link'
-import { getContentBySlug } from '@/lib/sheets'
-import AffiliateLink from '@/components/AffiliateLink'
-
-export const revalidate = 3600
-
-type MonetaryAmountLD = {
-  '@type': 'MonetaryAmount'
-  value?: number | string
-  currency?: string
-}
-
-type OfferShippingDetailsLD = {
-  '@type': 'OfferShippingDetails'
-  shippingRate?: MonetaryAmountLD
-}
-
-type MerchantReturnPolicyLD = {
-  '@type': 'MerchantReturnPolicy'
-  applicableCountry?: string
-  returnPolicyCategory?: string
-}
-
-type OfferLD = {
-  '@type': 'Offer'
-  price?: number | string
-  priceCurrency?: string
-  availability?: string
-  url?: string
-  shippingDetails?: OfferShippingDetailsLD
-  hasMerchantReturnPolicy?: MerchantReturnPolicyLD
-}
-
-type BrandLD = {
-  '@type': 'Brand'
-  name?: string
-}
+// --- JSON-LD : Product avec offers valides (EUR, InStock, url affiliée) ---
+type ProductOfferLD = {
+  "@type": "Offer";
+  price: string | number;
+  priceCurrency: "EUR";
+  availability: "https://schema.org/InStock" | "https://schema.org/OutOfStock";
+  url: string;
+  shippingDetails?: {
+    "@type": "OfferShippingDetails";
+    shippingRate?: {
+      "@type": "MonetaryAmount";
+      currency: "EUR";
+      value: string | number;
+    };
+    deliveryTime?: {
+      "@type": "ShippingDeliveryTime";
+      handlingTime?: { "@type": "QuantitativeValue"; minValue: number; maxValue: number; unitCode: "DAY" };
+      transitTime?: { "@type": "QuantitativeValue"; minValue: number; maxValue: number; unitCode: "DAY" };
+    };
+  };
+};
 
 type ProductLD = {
-  '@context': 'https://schema.org'
-  '@type': 'Product'
-  name?: string
-  brand?: BrandLD
-  description?: string
-  category?: string
-  url?: string
-  image?: string | string[]
-  offers?: OfferLD | OfferLD[]
-}
+  "@context": "https://schema.org";
+  "@type": "Product";
+  name: string;
+  description?: string;
+  image?: string;
+  category?: string;
+  brand?: { "@type": "Brand"; name: string };
+  url?: string;
+  offers: ProductOfferLD;
+};
 
-function isRecord(x: unknown): x is Record<string, unknown> {
-  return typeof x === 'object' && x !== null
-}
+const jsonLd: ProductLD = {
+  "@context": "https://schema.org",
+  "@type": "Product",
+  name: title,                           // <- ton titre de produit déjà récupéré
+  description:
+    "Sol de Janeiro – Bom Dia Bright Cream — soin corps populaire, apprécié pour sa sensorialité et son confort.",
+  image:
+    "https://m.media-amazon.com/images/I/61Sbo3-5poL._AC_SL1500_.jpg", // mets l’URL d’image la plus pertinente si tu l’as
+  category: "Body Care",
+  brand: { "@type": "Brand", name: "Sol de Janeiro" },
+  url: affiliate ?? undefined,           // peut rester undefined si pas d’URL
+  offers: {
+    "@type": "Offer",
+    price: 24.90,                        // ← mets 0 si tu n’as pas de prix fiable
+    priceCurrency: "EUR",
+    availability: "https://schema.org/InStock",
+    url: affiliate || "https://www.amazon.fr/s?k=Sol+de+Janeiro+Bom+Dia+Bright+Cream",
+    // Facultatif mais propre : enlève ou adapte si tu n’as pas l’info
+    // shippingDetails: {
+    //   "@type": "OfferShippingDetails",
+    //   deliveryTime: {
+    //     "@type": "ShippingDeliveryTime",
+    //     handlingTime: { "@type": "QuantitativeValue", minValue: 0, maxValue: 2, unitCode: "DAY" },
+    //     transitTime:  { "@type": "QuantitativeValue", minValue: 2, maxValue: 7, unitCode: "DAY" },
+    //   },
+    // },
+  },
+};
 
-function isProductLD(x: unknown): x is ProductLD {
-  return (
-    isRecord(x) &&
-    (x['@type'] === 'Product' || x['@type'] === 'schema:Product') &&
-    (x['@context'] === 'https://schema.org' || x['@context'] === 'http://schema.org')
-  )
-}
-
-function normalizeCurrency(code?: string): string | undefined {
-  if (!code) return undefined
-  const c = code.trim().toUpperCase()
-  return /^[A-Z]{3}$/.test(c) ? c : undefined
-}
-
-function ensureOfferArray(offers?: OfferLD | OfferLD[]): OfferLD[] | undefined {
-  if (!offers) return undefined
-  return Array.isArray(offers) ? offers : [offers]
-}
-
-function sanitizeProduct(input: ProductLD): ProductLD {
-  const offers = ensureOfferArray(input.offers)?.map((o) => ({
-    ...o,
-    priceCurrency: normalizeCurrency(o.priceCurrency),
-    availability: o.availability ?? 'http://schema.org/InStock',
-  }))
-  return {
-    ...input,
-    '@context': 'https://schema.org',
-    '@type': 'Product',
-    offers,
-  }
-}
-
-type Params = Promise<{ slug: string }>
-
-export default async function ProductPage({ params }: { params: Params }) {
-  const { slug } = await params
-  const content = await getContentBySlug(slug)
-
-  if (!content) return notFound()
-
-  const { title, html, schema } = content as {
-    title: string
-    html: string
-    schema: unknown
-  }
-
-  let jsonLd: ProductLD | null = null
-  if (isProductLD(schema)) {
-    jsonLd = sanitizeProduct(schema)
-  } else {
-    jsonLd = {
-      '@context': 'https://schema.org',
-      '@type': 'Product',
-      name: title,
-    }
-  }
-
-  const offers = ensureOfferArray(jsonLd.offers)
-  const affiliate =
-    offers?.find((o) => typeof o.url === 'string' && o.url.length > 0)?.url ?? ''
-
-  return (
-    <div className="space-y-6">
-      <nav className="text-sm text-gray-500">
-        <Link href="/">Accueil</Link> / <span className="text-gray-700">{title}</span>
-      </nav>
-
-      <h1 className="text-3xl md:text-4xl font-semibold">{title}</h1>
-
-      {/* CTA affilié si dispo (children requis) */}
-      {affiliate && (
-        <AffiliateLink
-          href={affiliate}
-          merchant="Amazon"
-          slug={slug}
-          pos="fiche"
-          className="inline-flex items-center rounded-xl bg-[#C4A092] px-4 py-2 text-white hover:opacity-90"
-        >
-          Voir l’offre
-        </AffiliateLink>
-      )}
-
-      <article
-        className="prose prose-neutral max-w-none"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-
-      {jsonLd && (
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-        />
-      )}
-    </div>
-  )
-}
+// Balise unique JSON-LD (sans @ts-expect-error)
+<script
+  type="application/ld+json"
+  dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+/>
