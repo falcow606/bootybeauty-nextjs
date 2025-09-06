@@ -1,7 +1,7 @@
 import './globals.css'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import CookieBanner from '@/components/CookieBanner'  // ✅ Import direct
+import CookieBanner from '@/components/CookieBanner'  // ✅ Import direct (pas de dynamic)
 
 export const metadata: Metadata = {
   title: 'Booty Beauty Project',
