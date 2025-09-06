@@ -10,11 +10,9 @@ type ContentRow = {
   Title: string
   Texte_HTML: string
   Schema_JSON?: string
-
-  // Nouvelles colonnes (toutes optionnelles)
   Image_URL?: string
   Brand?: string
-  Price?: string // on reçoit du CSV en string
+  Price?: string
   PriceCurrency?: string
   Availability?: string
 }
@@ -31,8 +29,10 @@ async function fetchCSV<T extends Record<string, unknown>>(
   if (!url) return []
   const res = await fetch(url, { next: { tags: [tag], revalidate: 0 } })
   const text = await res.text()
-  const parsed = Papa.parse<T>(text, { header: true, skipEmptyLines: true })
-  return parsed.data
+  // Ne pas utiliser de générique sur Papa.parse -> on caste le résultat
+  const parsed = Papa.parse(text, { header: true, skipEmptyLines: true })
+  const data = (parsed.data as unknown as T[]) || []
+  return data
 }
 
 export async function getContentBySlug(slug: string) {
@@ -40,7 +40,7 @@ export async function getContentBySlug(slug: string) {
   const row = rows.find((r) => r.Slug === slug)
   if (!row) return null
 
-  // Affiliate (Amazon de préférence) – même logique que le Top10
+  // Affiliate (Amazon en priorité)
   let affiliate = ''
   const offers = await fetchCSV<OfferRow>(OFFERS_URL, 'offers')
   const baseAffiliate =
@@ -52,10 +52,10 @@ export async function getContentBySlug(slug: string) {
         : `${baseAffiliate}${baseAffiliate.includes('?') ? '&' : '?'}tag=${AMAZON_TAG}`
   }
 
-  // JSON-LD depuis la colonne (si présent)
-  const fromSchema = row.Schema_JSON ? (JSON.parse(row.Schema_JSON) as Record<string, unknown>) : null
+  const fromSchema = row.Schema_JSON
+    ? (JSON.parse(row.Schema_JSON) as Record<string, unknown>)
+    : undefined
 
-  // Champs “colonnes” (prioritaires si fournis)
   const image = row.Image_URL || (fromSchema?.image as string | undefined) || undefined
   const brand =
     row.Brand ||
@@ -69,9 +69,7 @@ export async function getContentBySlug(slug: string) {
     slug: row.Slug,
     title: row.Title,
     html: row.Texte_HTML,
-    // On renvoie un “schema de base” fusionnable côté page
     schema: fromSchema,
-    // Champs produits structurés
     image,
     brand,
     price,
