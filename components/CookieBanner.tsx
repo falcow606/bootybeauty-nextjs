@@ -1,9 +1,17 @@
 'use client'
 import { useEffect, useState } from 'react'
 
-function getConsentCookie() {
+// ✅ Typages globaux pour éviter any
+declare global {
+  interface Window {
+    gtag?: (...args: unknown[]) => void
+    __bb_gaid?: string
+  }
+}
+
+function getConsentCookie(): 'granted' | 'denied' | null {
   const m = document.cookie.match(/(?:^|;\s*)bb_consent=(granted|denied)/)
-  return m ? m[1] : null
+  return m ? (m[1] as 'granted' | 'denied') : null
 }
 function setConsentCookie(v: 'granted' | 'denied') {
   const oneYear = 365 * 24 * 60 * 60
@@ -20,17 +28,16 @@ export default function CookieBanner() {
 
   const accept = () => {
     setConsentCookie('granted')
-    // Consent Mode : tout accordé
     if (window.gtag) {
       window.gtag('consent', 'update', {
         ad_user_data: 'granted',
         ad_personalization: 'granted',
         ad_storage: 'granted',
         analytics_storage: 'granted',
-      })
-      window.gtag('event', 'consent_update', { status: 'granted' })
-      if ((window as any).__bb_gaid) {
-        window.gtag('config', (window as any).__bb_gaid)
+      } as Record<string, string>)
+      window.gtag('event', 'consent_update', { status: 'granted' } as Record<string, string>)
+      if (window.__bb_gaid) {
+        window.gtag('config', window.__bb_gaid)
       }
     }
     setVisible(false)
@@ -44,8 +51,8 @@ export default function CookieBanner() {
         ad_personalization: 'denied',
         ad_storage: 'denied',
         analytics_storage: 'denied',
-      })
-      window.gtag('event', 'consent_update', { status: 'denied' })
+      } as Record<string, string>)
+      window.gtag('event', 'consent_update', { status: 'denied' } as Record<string, string>)
     }
     setVisible(false)
   }
