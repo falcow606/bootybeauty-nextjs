@@ -1,68 +1,133 @@
-// --- JSON-LD : Product avec offers valides (EUR, InStock, url affiliée) ---
-type ProductOfferLD = {
-  "@type": "Offer";
-  price: string | number;
-  priceCurrency: "EUR";
-  availability: "https://schema.org/InStock" | "https://schema.org/OutOfStock";
-  url: string;
-  shippingDetails?: {
-    "@type": "OfferShippingDetails";
-    shippingRate?: {
-      "@type": "MonetaryAmount";
-      currency: "EUR";
-      value: string | number;
-    };
-    deliveryTime?: {
-      "@type": "ShippingDeliveryTime";
-      handlingTime?: { "@type": "QuantitativeValue"; minValue: number; maxValue: number; unitCode: "DAY" };
-      transitTime?: { "@type": "QuantitativeValue"; minValue: number; maxValue: number; unitCode: "DAY" };
-    };
-  };
-};
+import Link from 'next/link'
+import AffiliateLink from '@/components/AffiliateLink'
+import { getContentBySlug } from '@/lib/sheets'
 
-type ProductLD = {
-  "@context": "https://schema.org";
-  "@type": "Product";
-  name: string;
-  description?: string;
-  image?: string;
-  category?: string;
-  brand?: { "@type": "Brand"; name: string };
-  url?: string;
-  offers: ProductOfferLD;
-};
+export const revalidate = 1800
 
-const jsonLd: ProductLD = {
-  "@context": "https://schema.org",
-  "@type": "Product",
-  name: title,                           // <- ton titre de produit déjà récupéré
-  description:
-    "Sol de Janeiro – Bom Dia Bright Cream — soin corps populaire, apprécié pour sa sensorialité et son confort.",
-  image:
-    "https://m.media-amazon.com/images/I/61Sbo3-5poL._AC_SL1500_.jpg", // mets l’URL d’image la plus pertinente si tu l’as
-  category: "Body Care",
-  brand: { "@type": "Brand", name: "Sol de Janeiro" },
-  url: affiliate ?? undefined,           // peut rester undefined si pas d’URL
-  offers: {
-    "@type": "Offer",
-    price: 24.90,                        // ← mets 0 si tu n’as pas de prix fiable
-    priceCurrency: "EUR",
-    availability: "https://schema.org/InStock",
-    url: affiliate || "https://www.amazon.fr/s?k=Sol+de+Janeiro+Bom+Dia+Bright+Cream",
-    // Facultatif mais propre : enlève ou adapte si tu n’as pas l’info
-    // shippingDetails: {
-    //   "@type": "OfferShippingDetails",
-    //   deliveryTime: {
-    //     "@type": "ShippingDeliveryTime",
-    //     handlingTime: { "@type": "QuantitativeValue", minValue: 0, maxValue: 2, unitCode: "DAY" },
-    //     transitTime:  { "@type": "QuantitativeValue", minValue: 2, maxValue: 7, unitCode: "DAY" },
-    //   },
-    // },
-  },
-};
+type Params = Promise<{ slug: string }>
 
-// Balise unique JSON-LD (sans @ts-expect-error)
-<script
-  type="application/ld+json"
-  dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-/>
+// Petite aide pour échapper le HTML => texte court pour la meta/description
+function stripHtml(html: string) {
+  return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+// Optionnel : metadata dynamique (title par fiche)
+export async function generateMetadata({ params }: { params: Params }) {
+  const { slug } = await params
+  const data = await getContentBySlug(slug)
+  const title = data?.title ?? 'Fiche produit'
+  const description = data?.html ? stripHtml(data.html).slice(0, 160) : 'Fiche produit beauté'
+  const canonical = `https://bootybeauty-nextjs.vercel.app/p/${slug}`
+
+  return {
+    title,
+    description,
+    alternates: { canonical },
+    openGraph: {
+      title,
+      description,
+      url: canonical,
+      type: 'article',
+      siteName: 'Booty Beauty Project',
+    },
+  }
+}
+
+export default async function ProductPage({ params }: { params: Params }) {
+  const { slug } = await params
+  const data = await getContentBySlug(slug)
+
+  if (!data) {
+    return (
+      <div className="prose">
+        <h1>Introuvable (slug incorrect ou CSV non publié).</h1>
+        <Link href="/" className="text-blue-600 underline">← Retour à l’accueil</Link>
+      </div>
+    )
+  }
+
+  // --- Données de la fiche ---
+  const title = data.title
+  const html = data.html
+
+  // On accepte des champs optionnels dans Schema_JSON du Google Sheet
+  // Exemple attendu :
+  // {
+  //   "@type": "Product",
+  //   "brand": {"@type":"Brand","name":"Sol de Janeiro"},
+  //   "image":"https://…jpg",
+  //   "price":"24.90",
+  //   "priceCurrency":"EUR",
+  //   "availability":"http://schema.org/InStock",
+  //   "affiliate": "https://www.amazon.fr/…&tag=xxxxx"
+  // }
+  const schema = (data.schema || {}) as Record<string, unknown>
+
+  const affiliate = (schema.affiliate as string | undefined) || undefined
+  const image = (schema.image as string | undefined) || undefined
+  const price = (schema.price as string | number | undefined)?.toString()
+  const priceCurrency = (schema.priceCurrency as string | undefined) || undefined
+  const availability =
+    (schema.availability as string | undefined) || 'http://schema.org/InStock'
+  const brandName =
+    typeof schema.brand === 'object' && schema.brand && 'name' in (schema.brand as object)
+      ? (schema.brand as { name?: string }).name
+      : undefined
+
+  // --- JSON-LD Product ---
+  const canonical = `https://bootybeauty-nextjs.vercel.app/p/${slug}`
+
+  const jsonLd: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: title,
+    description: stripHtml(html).slice(0, 500),
+    category: 'Body Care',
+    url: affiliate || canonical,
+  }
+
+  if (brandName) {
+    jsonLd.brand = { '@type': 'Brand', name: brandName }
+  }
+  if (image) {
+    jsonLd.image = [image]
+  }
+  // On ne met offers que si on a au moins prix + devise (sinon Google râle)
+  if (affiliate && price && priceCurrency) {
+    jsonLd.offers = {
+      '@type': 'Offer',
+      price,
+      priceCurrency,
+      availability,
+      url: affiliate,
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-3xl md:text-4xl font-semibold">{title}</h1>
+
+      {/* CTA affilié si dispo */}
+      {affiliate && (
+        <AffiliateLink
+          href={affiliate}
+          className="inline-flex items-center rounded-xl bg-[#C4A092] px-4 py-2 text-white hover:opacity-90 mt-2"
+        >
+          Voir l’offre
+        </AffiliateLink>
+      )}
+
+      {/* Contenu HTML éditorial depuis le Sheet */}
+      <article
+        className="prose prose-neutral max-w-none"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+
+      {/* JSON-LD Product */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+    </div>
+  )
+}
