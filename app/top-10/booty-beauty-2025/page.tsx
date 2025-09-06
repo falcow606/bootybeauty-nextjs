@@ -32,7 +32,6 @@ export default async function Top10Page() {
       {/* JSON-LD pour SEO */}
       <script
         type="application/ld+json"
-        // @ts-expect-error JSON
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
