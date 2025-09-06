@@ -7,8 +7,35 @@ export const revalidate = 3600
 export default async function Top10Page() {
   const top = await getTop10()
 
+  // Domaine absolu pour le JSON-LD (SEO)
+  const site =
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, '') ||
+    'https://bootybeauty-nextjs.vercel.app'
+
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    itemListOrder: 'https://schema.org/ItemListOrderAscending',
+    name: 'Top 10 Booty Beauty 2025',
+    url: `${site}/top-10/booty-beauty-2025`,
+    numberOfItems: top.length,
+    itemListElement: top.map((x, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      url: `${site}/p/${x.slug}`,
+      name: x.title,
+    })),
+  }
+
   return (
     <div className="space-y-8">
+      {/* JSON-LD pour SEO */}
+      <script
+        type="application/ld+json"
+        // @ts-expect-error JSON
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+
       <h1 className="text-3xl md:text-4xl font-semibold">Top 10 Booty Beauty 2025</h1>
       <p className="text-gray-600">
         Sélection des soins les plus recherchés (transparence : certains liens sont affiliés).
