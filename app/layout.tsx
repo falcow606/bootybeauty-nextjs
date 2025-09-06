@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   description: 'Comparatifs et fiches produits beauté — niche Booty Beauty.',
   metadataBase: new URL('https://bootybeauty-nextjs.vercel.app'),
   verification: {
-    google: 'google2093143cb4e5fd91', // ✅ code de Search Console
+    google: 'google2093143cb4e5fd91', // ✅ code Search Console
   },
   alternates: {
     canonical: 'https://bootybeauty-nextjs.vercel.app',
@@ -52,8 +52,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <footer className="max-w-5xl mx-auto px-4 py-10 text-sm text-gray-500">
           © {new Date().getFullYear()} Booty Beauty Project
         </footer>
+
+        {/* Google Analytics (GA4) */}
+        {process.env.NEXT_PUBLIC_GA_ID && (
+          <>
+            <script
+              async
+              src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA_ID}`}
+            />
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `
+                  window.dataLayer = window.dataLayer || [];
+                  function gtag(){dataLayer.push(arguments);}
+                  gtag('js', new Date());
+                  gtag('config', '${process.env.NEXT_PUBLIC_GA_ID}');
+                `,
+              }}
+            />
+          </>
+        )}
       </body>
     </html>
   )
 }
-
