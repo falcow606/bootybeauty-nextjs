@@ -1,10 +1,7 @@
 import './globals.css'
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import dynamic from 'next/dynamic'
-
-// bannière côté client (import dynamique pour éviter le SSR)
-const CookieBanner = dynamic(() => import('@/components/CookieBanner'), { ssr: false })
+import CookieBanner from '@/components/CookieBanner'  // ✅ Import direct
 
 export const metadata: Metadata = {
   title: 'Booty Beauty Project',

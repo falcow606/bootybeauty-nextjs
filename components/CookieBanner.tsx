@@ -20,22 +20,17 @@ export default function CookieBanner() {
 
   const accept = () => {
     setConsentCookie('granted')
-    // Consent Mode : on passe tout à granted puis on (re)configure GA4
-    // @ts-ignore
+    // Consent Mode : tout accordé
     if (window.gtag) {
-      // @ts-ignore
       window.gtag('consent', 'update', {
         ad_user_data: 'granted',
         ad_personalization: 'granted',
         ad_storage: 'granted',
         analytics_storage: 'granted',
       })
-      // @ts-ignore
       window.gtag('event', 'consent_update', { status: 'granted' })
-      // @ts-ignore - en cas où GA n'était pas configuré au chargement
-      if (window.__bb_gaid) {
-        // @ts-ignore
-        window.gtag('config', window.__bb_gaid)
+      if ((window as any).__bb_gaid) {
+        window.gtag('config', (window as any).__bb_gaid)
       }
     }
     setVisible(false)
@@ -43,17 +38,13 @@ export default function CookieBanner() {
 
   const decline = () => {
     setConsentCookie('denied')
-    // Consent Mode : tout refusé
-    // @ts-ignore
     if (window.gtag) {
-      // @ts-ignore
       window.gtag('consent', 'update', {
         ad_user_data: 'denied',
         ad_personalization: 'denied',
         ad_storage: 'denied',
         analytics_storage: 'denied',
       })
-      // @ts-ignore
       window.gtag('event', 'consent_update', { status: 'denied' })
     }
     setVisible(false)
