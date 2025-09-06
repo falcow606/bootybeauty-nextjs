@@ -37,7 +37,6 @@ export default async function ProductPage({ params }: { params: Params }) {
 
   const { title, html, image, brand, price, currency, availability, affiliate, schema } = data
 
-  // Base JSON-LD construit depuis les colonnes — on fusionne ensuite avec Schema_JSON si présent
   const productFromColumns: Record<string, unknown> = {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -56,11 +55,9 @@ export default async function ProductPage({ params }: { params: Params }) {
         : undefined,
   }
 
-  // Fusion simple (les colonnes priment si elles existent)
   const jsonLd: Record<string, unknown> = {
     ...(schema as Record<string, unknown> | undefined),
     ...productFromColumns,
-    // pour éviter d’écraser “offers” par une version vide :
     ...(schema?.offers || productFromColumns.offers
       ? {
           offers: {
@@ -79,7 +76,6 @@ export default async function ProductPage({ params }: { params: Params }) {
 
       <h1 className="text-3xl md:text-4xl font-semibold">{title}</h1>
 
-      {/* Bloc visuel + meta produit si fournis */}
       {(image || brand || price) && (
         <div className="flex items-start gap-6">
           {image && (
@@ -116,16 +112,24 @@ export default async function ProductPage({ params }: { params: Params }) {
         </div>
       )}
 
-      {/* CTA affilié si dispo */}
-      {affiliate && <AffiliateLink href={affiliate} className="mt-2" label="Voir l’offre" />}
+      {/* CTA affilié (corrigé) */}
+      {affiliate && (
+        <AffiliateLink
+          href={affiliate}
+          merchant="Amazon"
+          slug={slug}
+          pos="fiche"
+          className="inline-flex items-center rounded-xl bg-[#C4A092] px-4 py-2 text-white hover:opacity-90"
+        >
+          Voir l’offre
+        </AffiliateLink>
+      )}
 
-      {/* Contenu HTML éditorial depuis le Sheet */}
       <article
         className="prose prose-neutral max-w-none"
         dangerouslySetInnerHTML={{ __html: html }}
       />
 
-      {/* JSON-LD Product */}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
