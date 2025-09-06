@@ -1,149 +1,152 @@
-import { getContentBySlug } from '@/lib/sheets'
+// app/p/[slug]/page.tsx
+import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { getContentBySlug } from '@/lib/sheets'
 import AffiliateLink from '@/components/AffiliateLink'
 
-export const revalidate = 1800
+export const revalidate = 3600
 
-type Props = { params: Promise<{ slug: string }> }
-
-function extractDomain(u: string) {
-  try {
-    const url = new URL(u)
-    return url.hostname.replace(/^www\./, '')
-  } catch {
-    return ''
-  }
+// ---------- Types JSON-LD (sans any) ----------
+type MonetaryAmountLD = {
+  '@type': 'MonetaryAmount'
+  value?: number | string
+  currency?: string
 }
 
-// Lien “officiel” vers pages Livraison/Retours selon le marchand
-function getPolicyLinks(affiliate?: string) {
-  const host = affiliate ? extractDomain(affiliate) : ''
+type OfferShippingDetailsLD = {
+  '@type': 'OfferShippingDetails'
+  shippingRate?: MonetaryAmountLD
+}
 
-  // Amazon FR
-  if (host.endsWith('amazon.fr')) {
-    return {
-      shippingSettingsLink:
-        'https://www.amazon.fr/gp/help/customer/display.html?nodeId=G2S5FKXRFV8D2WVF',
-      returnPolicyUrl:
-        'https://www.amazon.fr/gp/help/customer/display.html?nodeId=G6Q8Z6FH9J9ZUXT5',
-      sellerName: 'Amazon',
-    }
-  }
+type MerchantReturnPolicyLD = {
+  '@type': 'MerchantReturnPolicy'
+  applicableCountry?: string
+  returnPolicyCategory?: string
+}
 
-  // Sephora FR
-  if (host.endsWith('sephora.fr')) {
-    return {
-      shippingSettingsLink:
-        'https://www.sephora.fr/faq-livraison.html',
-      returnPolicyUrl:
-        'https://www.sephora.fr/faq-retours.html',
-      sellerName: 'Sephora',
-    }
-  }
+type OfferLD = {
+  '@type': 'Offer'
+  price?: number | string
+  priceCurrency?: string
+  availability?: string
+  url?: string
+  shippingDetails?: OfferShippingDetailsLD
+  hasMerchantReturnPolicy?: MerchantReturnPolicyLD
+}
 
-  // Par défaut : on ne met que le nom “Marchand partenaire”
+type BrandLD = {
+  '@type': 'Brand'
+  name?: string
+}
+
+type ProductLD = {
+  '@context': 'https://schema.org'
+  '@type': 'Product'
+  name?: string
+  brand?: BrandLD
+  description?: string
+  category?: string
+  url?: string
+  image?: string | string[]
+  offers?: OfferLD | OfferLD[]
+}
+
+// ---------- Helpers de typage / sanitation ----------
+function isRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null
+}
+
+function isProductLD(x: unknown): x is ProductLD {
+  return (
+    isRecord(x) &&
+    (x['@type'] === 'Product' || x['@type'] === 'schema:Product') &&
+    (x['@context'] === 'https://schema.org' || x['@context'] === 'http://schema.org')
+  )
+}
+
+function normalizeCurrency(code?: string): string | undefined {
+  if (!code) return undefined
+  const c = code.trim().toUpperCase()
+  // assure un code ISO 4217 (ex: EUR, USD…)
+  return /^[A-Z]{3}$/.test(c) ? c : undefined
+}
+
+function ensureOfferArray(offers?: OfferLD | OfferLD[]): OfferLD[] | undefined {
+  if (!offers) return undefined
+  return Array.isArray(offers) ? offers : [offers]
+}
+
+function sanitizeProduct(input: ProductLD): ProductLD {
+  const offers = ensureOfferArray(input.offers)?.map((o) => ({
+    ...o,
+    priceCurrency: normalizeCurrency(o.priceCurrency),
+    availability: o.availability ?? 'http://schema.org/InStock',
+  }))
   return {
-    shippingSettingsLink: undefined as string | undefined,
-    returnPolicyUrl: undefined as string | undefined,
-    sellerName: 'Marchand partenaire',
-  }
-}
-
-export default async function ProductPage({ params }: Props) {
-  const { slug } = await params
-  const data = await getContentBySlug(slug)
-
-  if (!data) {
-    return (
-      <div className="prose">
-        <h1>Introuvable (slug incorrect ou CSV non publié).</h1>
-        <p><Link href="/">Retour à l’accueil</Link></p>
-      </div>
-    )
-  }
-
-  const { title, html, schema } = data
-
-  // Essaie de récupérer une URL affiliée utilisable depuis le HTML (si tu en mets une dans ton contenu)
-  // Sinon, Google utilisera juste l’URL de la page comme “url” produit.
-  const affiliateMatch = html.match(/href="([^"]+)"[^>]*rel="nofollow sponsored"/i)
-  const affiliate = affiliateMatch?.[1]
-
-  const { shippingSettingsLink, returnPolicyUrl, sellerName } = getPolicyLinks(affiliate)
-
-  // Image principale si tu en fournis une dans le schema JSON (sinon rien)
-  const imageFromSchema =
-    typeof schema === 'object' && schema?.image
-      ? Array.isArray(schema.image) ? schema.image[0] : schema.image
-      : undefined
-
-  // ---- JSON-LD Produit enrichi (sans inventions) ----
-  const jsonLd: any = {
+    ...input,
     '@context': 'https://schema.org',
     '@type': 'Product',
-    name: title,
-    description:
-      (typeof schema === 'object' && schema?.description) ||
-      `${title} — fiche avis & test.`,
-    image: imageFromSchema,
-    brand:
-      (typeof schema === 'object' && schema?.brand) || {
-        '@type': 'Brand',
-        name: sellerName,
-      },
-    url: affiliate || `https://bootybeauty-nextjs.vercel.app/p/${slug}`,
-    // Offre minimale : prix/monnaie/availability si tu les as mis dans ton CSV “Schema_JSON”
-    ...(typeof schema === 'object' && schema?.offers
-      ? {
-          offers: {
-            ...schema.offers,
-            // On ajoute ici les 2 champs qui faisaient l’objet des warnings :
-            ...(returnPolicyUrl && {
-              hasMerchantReturnPolicy: {
-                '@type': 'MerchantReturnPolicy',
-                // On ne prétend pas une fenêtre/conditions → on pointe la page officielle
-                url: returnPolicyUrl,
-                // Option neutre : “NotSupported” évite d’annoncer des conditions qu’on ne maîtrise pas
-                returnPolicyCategory:
-                  'https://schema.org/MerchantReturnPolicyNotSupported',
-              },
-            }),
-            ...(shippingSettingsLink && {
-              shippingDetails: {
-                '@type': 'OfferShippingDetails',
-                // Lien d’info livraison du marchand (pas de tarifs/délais inventés)
-                shippingSettingsLink,
-              },
-            }),
-            // Un “seller” propre (nom dépendant du marchand détecté)
-            seller: { '@type': 'Organization', name: sellerName },
-          },
-        }
-      : {}),
+    offers,
+  }
+}
+
+// ---------- Page ----------
+type Params = Promise<{ slug: string }>
+
+export default async function ProductPage({ params }: { params: Params }) {
+  const { slug } = await params
+  const content = await getContentBySlug(slug)
+
+  if (!content) return notFound()
+
+  const { title, html, schema } = content as {
+    title: string
+    html: string
+    schema: unknown
   }
 
+  // Construit le JSON-LD en sécurité, sans any
+  let jsonLd: ProductLD | null = null
+  if (isProductLD(schema)) {
+    jsonLd = sanitizeProduct(schema)
+  } else {
+    // Fallback minimal si pas de schema dans le Sheet
+    jsonLd = {
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      name: title,
+    }
+  }
+
+  // Lien affilié (si présent dans le schema.offers)
+  const offers = ensureOfferArray(jsonLd.offers)
+  const affiliate =
+    offers?.find((o) => typeof o.url === 'string' && o.url.length > 0)?.url ?? ''
+
   return (
-    <div className="prose max-w-none">
-      <nav className="mb-6 text-sm text-gray-500">
-        <Link href="/">Accueil</Link> &rsaquo; <Link href="/top-10/booty-beauty-2025">Top 10</Link> &rsaquo; {title}
+    <div className="space-y-6">
+      <nav className="text-sm text-gray-500">
+        <Link href="/">Accueil</Link> / <span className="text-gray-700">{title}</span>
       </nav>
 
-      <h1 className="!mb-2">{title}</h1>
+      <h1 className="text-3xl md:text-4xl font-semibold">{title}</h1>
 
       {/* CTA affilié si dispo */}
-      {affiliate && <AffiliateLink href={affiliate} className="mt-2">Voir l’offre</AffiliateLink>}
+      {affiliate && <AffiliateLink href={affiliate} className="mt-2" />}
 
       {/* Contenu HTML éditorial depuis le Sheet */}
       <article
-        className="mt-6"
+        className="prose prose-neutral max-w-none"
         dangerouslySetInnerHTML={{ __html: html }}
       />
 
-      {/* JSON-LD */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
+      {/* JSON-LD Product proprement typé */}
+      {jsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      )}
     </div>
   )
 }
