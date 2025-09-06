@@ -1,14 +1,16 @@
 import './globals.css'
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
+
+// bannière côté client (import dynamique pour éviter le SSR)
+const CookieBanner = dynamic(() => import('@/components/CookieBanner'), { ssr: false })
 
 export const metadata: Metadata = {
   title: 'Booty Beauty Project',
   description: 'Comparatifs et fiches produits beauté — niche Booty Beauty.',
   metadataBase: new URL('https://bootybeauty-nextjs.vercel.app'),
-  verification: {
-    google: 'google2093143cb4e5fd91',
-  },
+  verification: { google: 'google2093143cb4e5fd91' },
   alternates: { canonical: 'https://bootybeauty-nextjs.vercel.app' },
   openGraph: {
     siteName: 'Booty Beauty Project',
@@ -39,10 +41,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           © {new Date().getFullYear()} Booty Beauty Project
         </footer>
 
-        {/* Google Analytics (GA4) + auto-tracking clics sortants/affiliés + debug via ?ga_debug=1 */}
+        {/* ---- Google Analytics (GA4) avec Consent Mode ---- */}
         {process.env.NEXT_PUBLIC_GA_ID && (
           <>
+            {/* Charge gtag */}
             <script async src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA_ID}`} />
+            {/* Consent par défaut = denied ; config GA4 seulement si consent=granted */}
             <script
               dangerouslySetInnerHTML={{
                 __html: `
@@ -50,13 +54,35 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     window.dataLayer = window.dataLayer || [];
                     function gtag(){dataLayer.push(arguments);}
                     window.gtag = gtag;
-                    gtag('js', new Date());
 
-                    // Mode debug si l'URL contient ?ga_debug=1
+                    // Consentement par défaut : tout refusé
+                    gtag('consent', 'default', {
+                      ad_user_data: 'denied',
+                      ad_personalization: 'denied',
+                      ad_storage: 'denied',
+                      analytics_storage: 'denied'
+                    });
+
+                    // Aide : stocker l'ID pour re-config après accept
+                    window.__bb_gaid = '${process.env.NEXT_PUBLIC_GA_ID}';
+
+                    // Mode debug via ?ga_debug=1
                     var debug = typeof window !== 'undefined' && window.location && window.location.search.indexOf('ga_debug=1') > -1;
-                    gtag('config', '${process.env.NEXT_PUBLIC_GA_ID}', { debug_mode: debug });
 
-                    // --- Auto-tracking des clics sortants & d'affiliation ---
+                    // Si le cookie bb_consent=granted existe, on autorise l'analyse et on configure GA
+                    var hasGranted = (document.cookie || '').indexOf('bb_consent=granted') > -1;
+                    if (hasGranted) {
+                      gtag('consent', 'update', {
+                        ad_user_data: 'granted',
+                        ad_personalization: 'granted',
+                        ad_storage: 'granted',
+                        analytics_storage: 'granted'
+                      });
+                      gtag('js', new Date());
+                      gtag('config', '${process.env.NEXT_PUBLIC_GA_ID}', { debug_mode: debug });
+                    }
+
+                    // --- Auto-tracking des clics sortants & d'affiliation (uniquement si GA est configuré) ---
                     document.addEventListener('click', function(e) {
                       var el = e.target;
                       if (!el) return;
@@ -76,14 +102,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                       var isAffiliateData = a.dataset && a.dataset.aff === '1';
                       var isAffiliate = isAffiliateTag || isAffiliateData;
 
-                      if (isExternal) {
+                      // On n'envoie des events que si l'analyse est autorisée
+                      var consentGranted = (document.cookie || '').indexOf('bb_consent=granted') > -1;
+
+                      if (consentGranted && isExternal) {
                         gtag('event', 'outbound_click', {
                           link_url: href,
                           link_text: (a.textContent || '').trim().slice(0,100),
                         });
                       }
 
-                      if (isAffiliate) {
+                      if (consentGranted && isAffiliate) {
                         gtag('event', 'affiliate_click', {
                           link_url: href,
                           merchant: a.dataset.merchant || null,
@@ -98,6 +127,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             />
           </>
         )}
+
+        {/* Bannière cookies (accepter / refuser) */}
+        <CookieBanner />
       </body>
     </html>
   )
