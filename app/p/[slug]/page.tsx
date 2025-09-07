@@ -6,12 +6,28 @@ export const revalidate = 1800
 
 type Params = Promise<{ slug: string }>
 
-// Petite aide pour échapper le HTML => texte court pour la meta/description
+// Transforme du HTML en texte court (meta/description)
 function stripHtml(html: string) {
   return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
-// Optionnel : metadata dynamique (title par fiche)
+// Nettoie/valide un prix -> "24.90"
+function normalizePrice(input?: unknown): string | undefined {
+  if (input == null) return undefined
+  const s = String(input).replace(',', '.').trim()
+  const n = Number(s)
+  if (Number.isFinite(n) && n > 0) return n.toFixed(2)
+  return undefined
+}
+
+// Normalise une devise en ISO 4217 (EUR/GBP/USD…), par défaut EUR
+function normalizeCurrency(input?: unknown): string {
+  const s = String(input || '').trim().toUpperCase()
+  if (/^[A-Z]{3}$/.test(s)) return s
+  return 'EUR'
+}
+
+// -------------------- Metadata dynamique --------------------
 export async function generateMetadata({ params }: { params: Params }) {
   const { slug } = await params
   const data = await getContentBySlug(slug)
@@ -33,6 +49,7 @@ export async function generateMetadata({ params }: { params: Params }) {
   }
 }
 
+// -------------------- Page Produit --------------------
 export default async function ProductPage({ params }: { params: Params }) {
   const { slug } = await params
   const data = await getContentBySlug(slug)
@@ -46,35 +63,40 @@ export default async function ProductPage({ params }: { params: Params }) {
     )
   }
 
-  // --- Données de la fiche ---
   const title = data.title
   const html = data.html
 
-  // On accepte des champs optionnels dans Schema_JSON du Google Sheet
-  // Exemple attendu :
+  // Les champs optionnels viennent de Schema_JSON dans Google Sheet
+  // Exemple conseillé :
   // {
   //   "@type": "Product",
   //   "brand": {"@type":"Brand","name":"Sol de Janeiro"},
   //   "image":"https://…jpg",
   //   "price":"24.90",
   //   "priceCurrency":"EUR",
-  //   "availability":"http://schema.org/InStock",
+  //   "availability":"https://schema.org/InStock",
   //   "affiliate": "https://www.amazon.fr/…&tag=xxxxx"
   // }
   const schema = (data.schema || {}) as Record<string, unknown>
 
-  const affiliate = (schema.affiliate as string | undefined) || undefined
-  const image = (schema.image as string | undefined) || undefined
-  const price = (schema.price as string | number | undefined)?.toString()
-  const priceCurrency = (schema.priceCurrency as string | undefined) || undefined
+  const affiliate = (schema['affiliate'] as string | undefined) || undefined
+  const image = (schema['image'] as string | undefined) || undefined
+  const price = normalizePrice(schema['price'])
+  const priceCurrency = normalizeCurrency(schema['priceCurrency'])
   const availability =
-    (schema.availability as string | undefined) || 'http://schema.org/InStock'
-  const brandName =
-    typeof schema.brand === 'object' && schema.brand && 'name' in (schema.brand as object)
-      ? (schema.brand as { name?: string }).name
-      : undefined
+    (typeof schema['availability'] === 'string' && schema['availability'].startsWith('http'))
+      ? (schema['availability'] as string)
+      : 'https://schema.org/InStock'
 
-  // --- JSON-LD Product ---
+  // Récupère la marque si fournie
+  let brandName: string | undefined
+  const brand = schema['brand']
+  if (brand && typeof brand === 'object' && 'name' in (brand as Record<string, unknown>)) {
+    const n = (brand as Record<string, unknown>)['name']
+    if (typeof n === 'string' && n.trim()) brandName = n.trim()
+  }
+
+  // -------------------- JSON-LD Product --------------------
   const canonical = `https://bootybeauty-nextjs.vercel.app/p/${slug}`
 
   const jsonLd: Record<string, unknown> = {
@@ -87,14 +109,15 @@ export default async function ProductPage({ params }: { params: Params }) {
   }
 
   if (brandName) {
-    jsonLd.brand = { '@type': 'Brand', name: brandName }
+    jsonLd['brand'] = { '@type': 'Brand', name: brandName }
   }
   if (image) {
-    jsonLd.image = [image]
+    jsonLd['image'] = [image]
   }
-  // On ne met offers que si on a au moins prix + devise (sinon Google râle)
-  if (affiliate && price && priceCurrency) {
-    jsonLd.offers = {
+
+  // ✅ Ajoute OFFERS dès qu’on a un lien affilié + un prix valide
+  if (affiliate && price) {
+    jsonLd['offers'] = {
       '@type': 'Offer',
       price,
       priceCurrency,
@@ -126,6 +149,7 @@ export default async function ProductPage({ params }: { params: Params }) {
       {/* JSON-LD Product */}
       <script
         type="application/ld+json"
+        // pas d'@ts-expect-error nécessaire ici
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
     </div>
