@@ -1,0 +1,3 @@
+[33mf88152d[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m feat(product): use AffiliateLink on product pages (CTA with tracking)
+[33mfb7af0f[m fix(eslint): remove any in CookieBanner with proper window typings
+[33m5fa349f[m chore: trigger vercel build
