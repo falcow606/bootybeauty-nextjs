@@ -1,4 +1,6 @@
 // app/api/offers/route.ts
+import { NextResponse } from 'next/server';
+
 export const dynamic = 'force-dynamic';
 
 type Offer = {
@@ -12,23 +14,26 @@ type Offer = {
   lastChecked: string | null;
 };
 
-export async function GET() {
-  const url = process.env.N8N_OFFERS_API;
-  const key = process.env.N8N_OFFERS_KEY;
+const N8N_OFFERS_API = process.env.N8N_OFFERS_API; // ex: https://.../webhook/bootybeauty-offers-json
+const N8N_OFFERS_KEY = process.env.N8N_OFFERS_KEY; // ex: bb_offers_...
 
-  if (!url || !key) {
-    return Response.json({ ok: false, message: 'N8N envs missing' }, { status: 500 });
+export async function GET() {
+  if (!N8N_OFFERS_API || !N8N_OFFERS_KEY) {
+    return NextResponse.json({ ok: false, message: 'N8N envs missing' }, { status: 500 });
   }
 
   try {
-    const res = await fetch(url, {
+    const res = await fetch(N8N_OFFERS_API + '?_t=' + Date.now(), {
       cache: 'no-store',
-      headers: { 'x-api-key': key }, // secret envoyé à n8n
+      headers: {
+        'x-api-key': N8N_OFFERS_KEY,
+        accept: 'application/json',
+      },
     });
-    const text = await res.text();
 
+    const text = await res.text();
     if (!res.ok) {
-      return Response.json(
+      return NextResponse.json(
         { ok: false, status: res.status, snippet: text.slice(0, 200) },
         { status: 502 },
       );
@@ -36,9 +41,9 @@ export async function GET() {
 
     let data: unknown = [];
     if (text) {
-      try { data = JSON.parse(text) as unknown; }
+      try { data = JSON.parse(text); }
       catch {
-        return Response.json(
+        return NextResponse.json(
           { ok: false, message: 'Upstream non-JSON', snippet: text.slice(0, 200) },
           { status: 502 },
         );
@@ -46,10 +51,9 @@ export async function GET() {
     }
 
     const list = Array.isArray(data) ? (data as Offer[]) : [];
-    return Response.json(list, { status: 200 });
+    return NextResponse.json(list, { status: 200 });
   } catch (e) {
     const message = e instanceof Error ? e.message : 'unknown error';
-    return Response.json({ ok: false, message }, { status: 500 });
+    return NextResponse.json({ ok: false, message }, { status: 500 });
   }
 }
-

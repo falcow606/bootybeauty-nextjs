@@ -1,5 +1,5 @@
 // app/api/track-click/route.ts
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,21 +12,21 @@ type ClickPayload = {
   referrer: string | null;
 };
 
-export async function POST(req: NextRequest) {
-  const webhook = process.env.N8N_CLICK_WEBHOOK;
-  const secret = process.env.N8N_CLICK_SECRET;
+const N8N_CLICK_WEBHOOK = process.env.N8N_CLICK_WEBHOOK; // ex: https://.../webhook/bootybeauty-clicks
+const N8N_CLICK_SECRET  = process.env.N8N_CLICK_SECRET;  // ta clé secrète (vérifiée dans l’IF côté n8n)
 
-  if (!webhook || !secret) {
-    return Response.json({ ok: false, message: 'missing n8n envs' }, { status: 500 });
-  }
+export async function POST(req: NextRequest) {
+  if (!N8N_CLICK_WEBHOOK || !N8N_CLICK_SECRET) {
+    return NextResponse.json({ ok: false, message: 'missing n8n envs' }, { status: 500 });
+    }
 
   let bodyUnknown: unknown;
   try { bodyUnknown = await req.json(); }
-  catch { return Response.json({ ok: false, message: 'invalid json' }, { status: 400 }); }
+  catch { return NextResponse.json({ ok: false, message: 'invalid json' }, { status: 400 }); }
 
   const b = bodyUnknown as Partial<ClickPayload>;
   if (!b?.href || typeof b.href !== 'string') {
-    return Response.json({ ok: false, message: 'missing href' }, { status: 400 });
+    return NextResponse.json({ ok: false, message: 'missing href' }, { status: 400 });
   }
 
   const ip =
@@ -46,17 +46,17 @@ export async function POST(req: NextRequest) {
     timestamp: new Date().toISOString(),
   };
 
-  // Envoi au webhook n8n avec le secret en header
-  fetch(webhook, {
+  // proxy vers n8n + secret
+  fetch(N8N_CLICK_WEBHOOK, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'X-Webhook-Token': secret, // vérifié côté n8n
+      'content-type': 'application/json',
+      'x-webhook-token': N8N_CLICK_SECRET, // ton IF côté n8n lit ce header
+      accept: 'application/json',
     },
     body: JSON.stringify(payload),
     keepalive: true,
-  }).catch(() => {});
+  }).catch(() => { /* on ne bloque pas la réponse site */ });
 
-  return new Response(null, { status: 204 });
+  return new NextResponse(null, { status: 204 });
 }
-
