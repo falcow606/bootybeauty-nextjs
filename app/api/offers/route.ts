@@ -14,12 +14,17 @@ type Offer = {
 
 export async function GET() {
   const url = process.env.N8N_OFFERS_API;
-  if (!url) {
-    return Response.json({ ok: false, message: 'N8N_OFFERS_API missing' }, { status: 500 });
+  const key = process.env.N8N_OFFERS_KEY;
+
+  if (!url || !key) {
+    return Response.json({ ok: false, message: 'N8N envs missing' }, { status: 500 });
   }
 
   try {
-    const res = await fetch(url, { cache: 'no-store' });
+    const res = await fetch(url, {
+      cache: 'no-store',
+      headers: { 'x-api-key': key }, // secret envoyé à n8n
+    });
     const text = await res.text();
 
     if (!res.ok) {
@@ -31,11 +36,10 @@ export async function GET() {
 
     let data: unknown = [];
     if (text) {
-      try {
-        data = JSON.parse(text) as unknown;
-      } catch {
+      try { data = JSON.parse(text) as unknown; }
+      catch {
         return Response.json(
-          { ok: false, message: 'Upstream returned non-JSON', snippet: text.slice(0, 200) },
+          { ok: false, message: 'Upstream non-JSON', snippet: text.slice(0, 200) },
           { status: 502 },
         );
       }

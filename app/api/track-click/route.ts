@@ -14,16 +14,15 @@ type ClickPayload = {
 
 export async function POST(req: NextRequest) {
   const webhook = process.env.N8N_CLICK_WEBHOOK;
-  if (!webhook) {
-    return Response.json({ ok: false, message: 'N8N_CLICK_WEBHOOK missing' }, { status: 500 });
+  const secret = process.env.N8N_CLICK_SECRET;
+
+  if (!webhook || !secret) {
+    return Response.json({ ok: false, message: 'missing n8n envs' }, { status: 500 });
   }
 
   let bodyUnknown: unknown;
-  try {
-    bodyUnknown = await req.json();
-  } catch {
-    return Response.json({ ok: false, message: 'invalid json' }, { status: 400 });
-  }
+  try { bodyUnknown = await req.json(); }
+  catch { return Response.json({ ok: false, message: 'invalid json' }, { status: 400 }); }
 
   const b = bodyUnknown as Partial<ClickPayload>;
   if (!b?.href || typeof b.href !== 'string') {
@@ -32,8 +31,7 @@ export async function POST(req: NextRequest) {
 
   const ip =
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    req.headers.get('x-real-ip') ??
-    null;
+    req.headers.get('x-real-ip') ?? null;
   const ua = req.headers.get('user-agent') ?? null;
 
   const payload = {
@@ -48,10 +46,13 @@ export async function POST(req: NextRequest) {
     timestamp: new Date().toISOString(),
   };
 
-  // fire-and-forget vers n8n (pas bloquant)
+  // Envoi au webhook n8n avec le secret en header
   fetch(webhook, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Webhook-Token': secret, // vérifié côté n8n
+    },
     body: JSON.stringify(payload),
     keepalive: true,
   }).catch(() => {});
