@@ -1,7 +1,38 @@
+/* app/globals.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Styles de base (tu peux ajuster plus tard) */
-:root { color-scheme: light; }
-body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+/* ---------- Base (typo + headings) ---------- */
+@layer base {
+  html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+  h1, h2, h3, h4 {
+    @apply font-serif tracking-tight;
+  }
+
+  a.nav-link {
+    @apply hover:underline underline-offset-4 decoration-1;
+  }
+}
+
+/* ---------- Components ---------- */
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700;
+  }
+  .btn-outline {
+    @apply inline-flex items-center rounded-xl border border-brand-200 bg-white px-4 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50;
+  }
+  .card {
+    @apply rounded-2xl border border-zinc-200 bg-white p-5 shadow-card dark:border-zinc-800 dark:bg-zinc-900;
+  }
+  .badge {
+    @apply rounded-md bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700 dark:bg-brand-900/20 dark:text-brand-200;
+  }
+}
+
+/* ---------- Prose tweaks ---------- */
+@layer utilities {
+  .prose-compact :is(p,li) { @apply leading-relaxed; }
+}
