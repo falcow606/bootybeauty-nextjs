@@ -1,22 +1,15 @@
-/* app/globals.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* ---------- Base (typo + headings) ---------- */
+/* Base */
 @layer base {
   html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-
-  h1, h2, h3, h4 {
-    @apply font-serif tracking-tight;
-  }
-
-  a.nav-link {
-    @apply hover:underline underline-offset-4 decoration-1;
-  }
+  h1, h2, h3, h4 { @apply font-serif tracking-tight; }
+  a.nav-link { @apply hover:underline underline-offset-4 decoration-1; }
 }
 
-/* ---------- Components ---------- */
+/* Composants utilitaires */
 @layer components {
   .btn-primary {
     @apply inline-flex items-center rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700;
@@ -32,7 +25,7 @@
   }
 }
 
-/* ---------- Prose tweaks ---------- */
+/* Petites retouches de prose */
 @layer utilities {
   .prose-compact :is(p,li) { @apply leading-relaxed; }
 }
