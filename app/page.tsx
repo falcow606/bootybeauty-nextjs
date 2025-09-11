@@ -1,50 +1,48 @@
-// app/page.tsx
-import Link from 'next/link';
-import OffersClient from '@/components/OffersClient';
-import { headers } from 'next/headers';
+import { headers } from "next/headers";
+import Link from "next/link";
+import OffersClient from "@/components/OffersClient";
 
-export const revalidate = 300;
+export const revalidate = 0; // page d'accueil live
 
-export default async function Home() {
-  const h = await headers();
-  const host = h.get('x-forwarded-host') ?? h.get('host');
-  const proto = h.get('x-forwarded-proto') ?? 'https';
+export default async function HomePage() {
+  // Reconstruit l’URL absolue en prod comme en local pour /api/offers
+  const h = headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? "http";
   const base = `${proto}://${host}`;
   const offersApi = `${base}/api/offers`;
 
   return (
-    <div>
-      {/* Hero */}
-      <section className="bg-gradient-to-b from-brand-50 to-white py-10 md:py-14">
-        <div className="mx-auto max-w-5xl px-6">
-          <h1 className="text-3xl md:text-4xl font-serif font-semibold">
-            Soins booty&nbsp;: la sélection qui fait gagner du temps 💖
-          </h1>
-          <p className="mt-3 max-w-2xl text-zinc-600">
-            On repère les bons produits, on surveille les prix et on vous envoie
-            directement vers l’offre la plus intéressante du moment.
-          </p>
+    <div className="max-w-5xl mx-auto px-5 py-8">
+      <header className="mb-6 flex items-center justify-between">
+        <Link href="/" className="brand text-xl font-semibold">Booty Beauty</Link>
+        <nav className="text-sm">
+          <Link href="/top-10/booty-beauty-2025/" className="hover:underline">
+            Top 10
+          </Link>
+          <span className="mx-2">·</span>
+          <Link href="/offers" className="hover:underline">
+            Offres
+          </Link>
+        </nav>
+      </header>
 
-          <div className="mt-4 flex flex-wrap gap-2 text-sm text-zinc-600">
-            <span className="badge">Sélection éditoriale</span>
-            <span className="badge">Prix surveillés</span>
-            <span className="badge">Liens partenaires sans surcoût</span>
-          </div>
-
-          <div className="mt-6 flex gap-3">
-            <Link href="/offers" className="btn-primary">Voir toutes les offres</Link>
-            <Link href="/top-10/booty-beauty-2025" className="btn-outline">Top 10</Link>
-          </div>
-        </div>
+      <section className="space-y-2 mb-8">
+        <h1 className="text-3xl md:text-4xl font-semibold">
+          Soins booty : la sélection qui fait gagner du temps 💖
+        </h1>
+        <p className="text-neutral-600">
+          On repère les produits qui valent le coup, on surveille les prix et on vous envoie
+          direct vers la meilleure offre du moment.
+        </p>
+        <Link href="/offers" className="text-sm underline">
+          Voir toutes les offres
+        </Link>
       </section>
 
-      {/* Offres */}
-      <section className="mx-auto max-w-5xl px-6 py-10">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-2xl font-serif font-semibold">Offres à ne pas manquer</h2>
-          <Link href="/offers" className="nav-link text-sm">Tout voir →</Link>
-        </div>
-
+      <section className="space-y-4">
+        <h2 className="text-xl font-semibold">Offres à ne pas manquer</h2>
+        {/* ⬇️ Le composant client va charger l’API /api/offers */}
         <OffersClient apiUrl={offersApi} />
       </section>
     </div>

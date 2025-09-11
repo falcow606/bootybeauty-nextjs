@@ -1,99 +1,82 @@
-// components/OffersClient.tsx
-'use client';
+"use client";
 
-import { useMemo, useState, ChangeEvent } from 'react';
-import OfferCard, { Offer } from './OfferCard';
+import { useEffect, useState } from "react";
+import OfferCard from "@/components/OfferCard";
 
-type SortKey = 'price-asc' | 'price-desc' | 'recent';
+export type Offer = {
+  productId: string | number;
+  merchant: string | null;
+  price: string | number | null;
+  availability: string | null;
+  affiliateUrl: string | null;
+  commissionPct: string | number | null;
+  httpStatus: number | string | null;
+  lastChecked: string | null;
+};
 
-export default function OffersClient({ initialOffers }: { initialOffers: Offer[] }) {
-  const [q, setQ] = useState('');
-  const [sort, setSort] = useState<SortKey>('recent');
-  const [onlyInStock, setOnlyInStock] = useState(true);
+function isOffer(x: unknown): x is Offer {
+  if (!x || typeof x !== "object") return false;
+  const o = x as Record<string, unknown>;
+  return "affiliateUrl" in o && "httpStatus" in o;
+}
 
-  function onChangeSort(e: ChangeEvent<HTMLSelectElement>) {
-    const v = e.target.value as SortKey;
-    // garde-fou si quelqu’un modifie le DOM
-    if (v === 'price-asc' || v === 'price-desc' || v === 'recent') {
-      setSort(v);
-    } else {
-      setSort('recent');
-    }
-  }
+type Props = {
+  /** Option 1 : l’URL de l’API à appeler côté client (ex: /api/offers) */
+  apiUrl?: string;
+  /** Option 2 : des offres déjà passées côté serveur (non utilisé si apiUrl est fourni) */
+  initialOffers?: Offer[];
+};
 
-  const filtered = useMemo(() => {
-    let list = [...initialOffers];
+export default function OffersClient({ apiUrl, initialOffers = [] }: Props) {
+  const [offers, setOffers] = useState<Offer[]>(initialOffers);
+  const [loading, setLoading] = useState<boolean>(!initialOffers.length && !!apiUrl);
+  const [error, setError] = useState<string | null>(null);
 
-    if (q.trim()) {
-      const s = q.trim().toLowerCase();
-      list = list.filter(
-        (o) =>
-          String(o.productId ?? '').toLowerCase().includes(s) ||
-          String(o.merchant ?? '').toLowerCase().includes(s),
-      );
-    }
+  useEffect(() => {
+    if (!apiUrl) return;
 
-    if (onlyInStock) {
-      list = list.filter((o) => (o.availability ?? '').toLowerCase().includes('stock'));
-    }
+    let cancelled = false;
+    const ctrl = new AbortController();
 
-    if (sort === 'price-asc' || sort === 'price-desc') {
-      list.sort((a, b) => Number(a.price ?? Number.POSITIVE_INFINITY) - Number(b.price ?? Number.POSITIVE_INFINITY));
-      if (sort === 'price-desc') list.reverse();
-    } else {
-      // recent: lastChecked desc
-      list.sort(
-        (a, b) =>
-          new Date(String(b.lastChecked ?? 0)).getTime() -
-          new Date(String(a.lastChecked ?? 0)).getTime(),
-      );
-    }
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
 
-    return list;
-  }, [initialOffers, q, sort, onlyInStock]);
+        const res = await fetch(apiUrl, { cache: "no-store", signal: ctrl.signal });
+        const text = await res.text();
+        if (!res.ok) throw new Error(`API ${res.status}: ${text.slice(0, 200)}`);
+
+        const data: unknown = text ? JSON.parse(text) : [];
+        const list: Offer[] = Array.isArray(data)
+          ? (data as unknown[])
+              .filter(isOffer)
+              .filter((o) => o.affiliateUrl && String(o.httpStatus) === "200")
+          : [];
+
+        if (!cancelled) setOffers(list);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "unknown error");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      ctrl.abort();
+    };
+  }, [apiUrl]);
+
+  if (error) return <p className="text-red-600 text-sm">Erreur chargement offres : {error}</p>;
+  if (loading) return <p className="text-sm text-neutral-500">Chargement des offres…</p>;
+  if (offers.length === 0) return <p className="text-sm text-neutral-500">Aucune offre valide pour le moment.</p>;
 
   return (
-    <>
-      {/* Controls */}
-      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Rechercher (produit ou marchand)"
-          className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm outline-none ring-0 transition placeholder:text-zinc-400 focus:border-rose-400 dark:border-zinc-700 dark:bg-zinc-900"
-        />
-
-        <select
-          value={sort}
-          onChange={onChangeSort}
-          className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-rose-400 dark:border-zinc-700 dark:bg-zinc-900"
-        >
-          <option value="recent">Plus récentes</option>
-          <option value="price-asc">Prix : croissant</option>
-          <option value="price-desc">Prix : décroissant</option>
-        </select>
-
-        <label className="inline-flex items-center gap-2 rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900">
-          <input
-            type="checkbox"
-            className="h-4 w-4 accent-rose-600"
-            checked={onlyInStock}
-            onChange={(e) => setOnlyInStock(e.target.checked)}
-          />
-          En stock uniquement
-        </label>
-      </div>
-
-      {/* Grid */}
-      {filtered.length === 0 ? (
-        <p className="text-sm text-zinc-500">Aucune offre ne correspond à vos filtres.</p>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {filtered.map((o, i) => (
-            <OfferCard key={`${o.productId}-${i}`} offer={o} index={i} />
-          ))}
-        </div>
-      )}
-    </>
+    <div className="grid grid-cols-1 gap-4">
+      {offers.map((o, i) => (
+        <OfferCard key={String(o.productId)} offer={o} index={i} />
+      ))}
+    </div>
   );
 }
