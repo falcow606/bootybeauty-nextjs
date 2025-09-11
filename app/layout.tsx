@@ -1,41 +1,79 @@
 // app/layout.tsx
 import type { Metadata } from 'next';
-import './globals.css'; // garde cette ligne si tu as un globals.css
-
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://bootybeauty-nextjs.vercel.app';
+import './globals.css';
 
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
+  metadataBase: new URL('https://bootybeauty-nextjs.vercel.app'),
   title: {
-    default: 'BootyBeauty – Bons plans beauté',
-    template: '%s – BootyBeauty',
+    default: 'Booty Beauty',
+    template: '%s — Booty Beauty',
   },
   description:
-    'Sélection de bons plans beauté : meilleurs prix, liens affiliés vérifiés et disponibilités à jour.',
+    "Comparateur de soins booty : sélection éditoriale, prix comparés, offres mises à jour. Liens d'affiliation sans surcoût.",
+  alternates: { canonical: '/' },
   openGraph: {
+    title: 'Booty Beauty',
+    description:
+      "Comparateur de soins booty : sélection éditoriale, prix comparés, offres mises à jour.",
     type: 'website',
-    url: siteUrl,
-    siteName: 'BootyBeauty',
-    title: 'BootyBeauty – Bons plans beauté',
-    description:
-      'Sélection de bons plans beauté : meilleurs prix, liens affiliés vérifiés et disponibilités à jour.',
-    locale: 'fr_FR',
+    siteName: 'Booty Beauty',
+    url: 'https://bootybeauty-nextjs.vercel.app',
   },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'BootyBeauty – Bons plans beauté',
-    description:
-      'Sélection de bons plans beauté : meilleurs prix, liens affiliés vérifiés et disponibilités à jour.',
-  },
-  alternates: {
-    canonical: '/',
-  },
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="fr">
-      <body>{children}</body>
+    <html lang="fr" className="h-full">
+      <body className="min-h-screen bg-white text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100">
+        {/* Header simple */}
+        <header className="border-b border-zinc-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:border-zinc-800 dark:bg-zinc-900/70">
+          <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+            <a href="/" className="text-lg font-semibold">
+              Booty Beauty
+            </a>
+            <nav className="flex items-center gap-4 text-sm text-zinc-600 dark:text-zinc-300">
+              <a className="hover:underline" href="/offers">
+                Offres
+              </a>
+              <a className="hover:underline" href="/top-10/booty-beauty-2025">
+                Top 10
+              </a>
+              <a className="hover:underline" href="/about">
+                À propos
+              </a>
+            </nav>
+          </div>
+        </header>
+
+        <main>{children}</main>
+
+        {/* Footer avec liens légaux */}
+        <footer className="mt-16 border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="mx-auto max-w-5xl px-6 py-8 text-sm text-zinc-600 dark:text-zinc-300">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p>
+                © {new Date().getFullYear()} Booty Beauty — Sélection éditoriale & liens
+                marchands partenaires.
+              </p>
+              <nav className="flex flex-wrap items-center gap-4">
+                <a className="hover:underline" href="/about">
+                  À propos
+                </a>
+                <a className="hover:underline" href="/disclosure">
+                  Disclosure
+                </a>
+                <a className="hover:underline" href="/legal">
+                  Mentions légales
+                </a>
+              </nav>
+            </div>
+            <p className="mt-3 text-xs">
+              Certains liens sont affiliés et peuvent nous rémunérer sans surcoût pour vous.
+            </p>
+          </div>
+        </footer>
+      </body>
     </html>
   );
 }
