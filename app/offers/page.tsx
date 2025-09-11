@@ -8,14 +8,14 @@ export const revalidate = 0; // page live (pas de cache)
 export const metadata: Metadata = {
   title: 'Offres — Booty Beauty',
   description:
-    "Toutes nos offres beauté prêtes à l’achat, mises à jour et vérifiées.",
+    'Toutes nos offres beauté prêtes à l’achat, mises à jour et vérifiées.',
   alternates: {
     canonical: 'https://bootybeauty-nextjs.vercel.app/offers',
   },
 };
 
 export default async function OffersPage() {
-  // Reconstruit l’URL absolue pour appeler /api/offers (OK en local et Vercel)
+  // Reconstruit l’URL absolue pour appeler /api/offers (OK en local et sur Vercel)
   const h = await headers();
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000';
   const proto =
@@ -32,7 +32,7 @@ export default async function OffersPage() {
         </p>
       </header>
 
-      {/* ⬇️ Le composant client charge l’API /api/offers */}
+      {/* ⬇️ Utilise *apiUrl* (et non initialOffers) */}
       <OffersClient apiUrl={apiUrl} />
     </main>
   );
