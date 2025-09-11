@@ -3,19 +3,34 @@ export const dynamic = 'force-dynamic';
 
 import type { Metadata } from 'next';
 
-export async function generateMetadata({
-  params,
-}: {
-  params: { slug: string };
-}): Promise<Metadata> {
-  const title = `Top 10 ${params.slug.replace(/-/g, ' ')} — Booty Beauty`;
-  const desc =
-    "Notre sélection indépendante des meilleurs produits, mise à jour automatiquement selon les offres partenaires.";
-  return { title, description: desc, alternates: { canonical: `/top-10/${params.slug}` } };
+type Params = Promise<{ slug: string }>;
+
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const { slug } = await params;
+  const pretty = slug.replace(/-/g, ' ');
+  const title = `Top 10 ${pretty} — Booty Beauty`;
+  const description =
+    "Notre sélection indépendante des meilleurs produits, mise à jour régulièrement selon les offres partenaires.";
+  const url = `https://bootybeauty-nextjs.vercel.app/top-10/${slug}`;
+
+  return {
+    title,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      title,
+      description,
+      url,
+      type: 'article',
+      siteName: 'Booty Beauty Project',
+    },
+  };
 }
 
-export default async function TopPage({ params }: { params: { slug: string } }) {
-  const h = params.slug.replace(/-/g, ' ');
+export default async function TopPage({ params }: { params: Params }) {
+  const { slug } = await params;
+  const h = slug.replace(/-/g, ' ');
+
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
       <header className="mb-8">
