@@ -1,45 +1,39 @@
 // app/offers/page.tsx
-export const dynamic = 'force-dynamic';
-
+import { headers } from 'next/headers';
 import OffersClient from '@/components/OffersClient';
-import type { Offer } from '@/components/OfferCard';
+import type { Metadata } from 'next';
 
-async function getOffers(): Promise<Offer[]> {
-  const url = process.env.N8N_OFFERS_API;
-  if (!url) return [];
+export const revalidate = 0; // page live (pas de cache)
 
-  const res = await fetch(url, { cache: 'no-store' });
-  const text = await res.text();
-
-  if (!res.ok) return [];
-
-  let data: unknown = [];
-  try {
-    data = text ? JSON.parse(text) : [];
-  } catch {
-    return [];
-  }
-
-  const raw = Array.isArray(data) ? (data as Offer[]) : [];
-  // garder uniquement les liens actifs
-  return raw.filter((o) => o?.affiliateUrl && String(o?.httpStatus) === '200');
-}
+export const metadata: Metadata = {
+  title: 'Offres — Booty Beauty',
+  description:
+    "Toutes nos offres beauté prêtes à l’achat, mises à jour et vérifiées.",
+  alternates: {
+    canonical: 'https://bootybeauty-nextjs.vercel.app/offers',
+  },
+};
 
 export default async function OffersPage() {
-  const offers = await getOffers();
+  // Reconstruit l’URL absolue pour appeler /api/offers (OK en local et Vercel)
+  const h = await headers();
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000';
+  const proto =
+    h.get('x-forwarded-proto') ?? (host.includes('localhost') ? 'http' : 'https');
+  const base = `${proto}://${host}`;
+  const apiUrl = `${base}/api/offers`;
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-10">
-      <header className="mb-6 flex items-end justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Offres du moment</h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            Sélection mise à jour automatiquement depuis nos marchands partenaires.
-          </p>
-        </div>
+    <main className="max-w-5xl mx-auto px-5 py-8">
+      <header className="mb-6">
+        <h1 className="text-3xl md:text-4xl font-semibold">Toutes les offres</h1>
+        <p className="mt-2 text-sm text-neutral-600">
+          Prix indicatifs, disponibilité et liens partenaires sans surcoût pour vous.
+        </p>
       </header>
 
-      <OffersClient initialOffers={offers} />
+      {/* ⬇️ Le composant client charge l’API /api/offers */}
+      <OffersClient apiUrl={apiUrl} />
     </main>
   );
 }
