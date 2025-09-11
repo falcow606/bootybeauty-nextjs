@@ -23,7 +23,7 @@ function initials(name?: string | null) {
   return name
     .split(/\s+/)
     .slice(0, 2)
-    .map(s => s[0]?.toUpperCase() ?? '')
+    .map((s) => s[0]?.toUpperCase() ?? '')
     .join('') || '—';
 }
 
@@ -37,7 +37,7 @@ function when(d?: string | null) {
   }
 }
 
-async function trackClick(o: Offer, index: number) {
+async function trackClick(o: Offer, index: number, originSlug?: string) {
   try {
     await fetch('/api/track-click', {
       method: 'POST',
@@ -45,10 +45,12 @@ async function trackClick(o: Offer, index: number) {
       body: JSON.stringify({
         href: o.affiliateUrl,
         merchant: o.merchant,
-        slug: 'offers',
+        slug: originSlug ?? 'offers', // <-- utilise le slug passé par la page produit si fourni
         pos: index,
-        pathname: '/offers',
-        referrer: typeof document !== 'undefined' ? document.referrer || null : null,
+        pathname:
+          typeof window !== 'undefined' ? window.location.pathname : '/offers',
+        referrer:
+          typeof document !== 'undefined' ? document.referrer || null : null,
       }),
       keepalive: true,
     });
@@ -57,14 +59,26 @@ async function trackClick(o: Offer, index: number) {
   }
 }
 
-export default function OfferCard({ offer, index }: { offer: Offer; index: number }) {
+export default function OfferCard({
+  offer,
+  index,
+  originSlug,
+}: {
+  offer: Offer;
+  index: number;
+  /** Optionnel : slug d’origine (ex: slug de la page produit) */
+  originSlug?: string;
+}) {
   const price = formatPrice(offer.price);
   const ok = String(offer.httpStatus) === '200';
   const merchant = offer.merchant || 'Boutique';
-  const idLabel = typeof offer.productId === 'number' ? `#${offer.productId}` : String(offer.productId || '').trim();
+  const idLabel =
+    typeof offer.productId === 'number'
+      ? `#${offer.productId}`
+      : String(offer.productId || '').trim();
 
   return (
-    <article className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
+    <article className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
       <div className="flex items-center gap-4">
         {/* Avatar marchand */}
         <div
@@ -72,14 +86,17 @@ export default function OfferCard({ offer, index }: { offer: Offer; index: numbe
           aria-label={merchant}
           title={merchant}
         >
-          <span className="text-sm font-semibold text-zinc-700">{initials(merchant)}</span>
+          <span className="text-sm font-semibold text-zinc-700">
+            {initials(merchant)}
+          </span>
         </div>
 
         {/* Infos principales */}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="truncate text-base font-semibold text-zinc-900">
-              {merchant}{idLabel ? ` · ${idLabel}` : ''}
+              {merchant}
+              {idLabel ? ` · ${idLabel}` : ''}
             </h3>
             {ok ? (
               <span className="rounded-md bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
@@ -90,15 +107,17 @@ export default function OfferCard({ offer, index }: { offer: Offer; index: numbe
                 À vérifier
               </span>
             )}
-            {offer.commissionPct != null && String(offer.commissionPct).trim() !== '' && (
-              <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600">
-                {String(offer.commissionPct)}%
-              </span>
-            )}
+            {offer.commissionPct != null &&
+              String(offer.commissionPct).trim() !== '' && (
+                <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600">
+                  {String(offer.commissionPct)}%
+                </span>
+              )}
           </div>
 
           <div className="mt-1 text-sm text-zinc-600">
-            {price ? price : 'Prix variable'} · {offer.availability || 'Disponibilité —'}
+            {price ? price : 'Prix variable'} ·{' '}
+            {offer.availability || 'Disponibilité —'}
           </div>
         </div>
 
@@ -108,7 +127,7 @@ export default function OfferCard({ offer, index }: { offer: Offer; index: numbe
             href={offer.affiliateUrl}
             target="_blank"
             rel="nofollow sponsored noopener"
-            onClick={() => trackClick(offer, index)}
+            onClick={() => trackClick(offer, index, originSlug)}
             className="inline-flex items-center rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
           >
             Voir l’offre
