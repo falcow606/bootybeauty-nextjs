@@ -6,9 +6,9 @@ import Link from 'next/link';
 import OfferCard, { type Offer } from '@/components/OfferCard';
 
 async function getOffers(): Promise<Offer[]> {
-  // On appelle l’API interne /api/offers avec l’URL absolue (compatible Vercel)
-  const h = headers();
-  const host = h.get('x-forwarded-host') ?? h.get('host');
+  // Récupère l’URL absolue de l’API interne (compatible Vercel)
+  const h = await headers();
+  const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000';
   const proto = h.get('x-forwarded-proto') ?? 'http';
   const base = `${proto}://${host}`;
 
@@ -17,15 +17,16 @@ async function getOffers(): Promise<Offer[]> {
 
   const data = (await res.json()) as unknown;
   const list = Array.isArray(data) ? (data as Offer[]) : [];
-  // Offres prêtes : lien + HTTP 200
   const valids = list.filter((o) => o?.affiliateUrl && String(o?.httpStatus) === '200');
-  // Tri par fraicheur (lastChecked desc), puis prix croissant en tiebreaker
+
+  // Tri fraicheur puis prix
   valids.sort((a, b) => {
     const t = (d: unknown) => new Date(String(d ?? 0)).getTime();
     const dt = t(b.lastChecked) - t(a.lastChecked);
     if (dt !== 0) return dt;
     return Number(a.price ?? Number.POSITIVE_INFINITY) - Number(b.price ?? Number.POSITIVE_INFINITY);
   });
+
   return valids.slice(0, 6);
 }
 
