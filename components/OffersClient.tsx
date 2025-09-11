@@ -1,13 +1,25 @@
 // components/OffersClient.tsx
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, ChangeEvent } from 'react';
 import OfferCard, { Offer } from './OfferCard';
+
+type SortKey = 'price-asc' | 'price-desc' | 'recent';
 
 export default function OffersClient({ initialOffers }: { initialOffers: Offer[] }) {
   const [q, setQ] = useState('');
-  const [sort, setSort] = useState<'price-asc' | 'price-desc' | 'recent'>('recent');
+  const [sort, setSort] = useState<SortKey>('recent');
   const [onlyInStock, setOnlyInStock] = useState(true);
+
+  function onChangeSort(e: ChangeEvent<HTMLSelectElement>) {
+    const v = e.target.value as SortKey;
+    // garde-fou si quelqu’un modifie le DOM
+    if (v === 'price-asc' || v === 'price-desc' || v === 'recent') {
+      setSort(v);
+    } else {
+      setSort('recent');
+    }
+  }
 
   const filtered = useMemo(() => {
     let list = [...initialOffers];
@@ -26,7 +38,7 @@ export default function OffersClient({ initialOffers }: { initialOffers: Offer[]
     }
 
     if (sort === 'price-asc' || sort === 'price-desc') {
-      list.sort((a, b) => Number(a.price ?? Infinity) - Number(b.price ?? Infinity));
+      list.sort((a, b) => Number(a.price ?? Number.POSITIVE_INFINITY) - Number(b.price ?? Number.POSITIVE_INFINITY));
       if (sort === 'price-desc') list.reverse();
     } else {
       // recent: lastChecked desc
@@ -53,7 +65,7 @@ export default function OffersClient({ initialOffers }: { initialOffers: Offer[]
 
         <select
           value={sort}
-          onChange={(e) => setSort(e.target.value as any)}
+          onChange={onChangeSort}
           className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-rose-400 dark:border-zinc-700 dark:bg-zinc-900"
         >
           <option value="recent">Plus récentes</option>
