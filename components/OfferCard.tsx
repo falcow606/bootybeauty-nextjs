@@ -1,7 +1,6 @@
 // components/OfferCard.tsx
-'use client';
-
 import Image from 'next/image';
+import AffiliateLink from '@/components/AffiliateLink';
 
 export type Offer = {
   productId: string | number;
@@ -9,113 +8,88 @@ export type Offer = {
   price: string | number | null;
   availability: string | null;
   affiliateUrl: string | null;
-  commissionPct: string | number | null; // non affiché côté UI publique
+  commissionPct: string | number | null;
   httpStatus: number | string | null;
   lastChecked: string | null;
 
-  // Champs optionnels si un jour tu ajoutes des visuels / titres côté n8n
+  // champs enrichis par l’API n8n
   imageUrl?: string | null;
   title?: string | null;
-};
-
-type Props = {
-  offer: Offer;
-  index: number;
-  /** Optionnel : fourni par la page produit pour tracer l’origine */
-  originSlug?: string;
+  brand?: string | null;
 };
 
 function asNumber(value: string | number | null): number | null {
   if (value == null) return null;
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'number') return Number.isFinite(value) && value > 0 ? value : null;
   const n = Number(String(value).replace(',', '.').trim());
-  return Number.isFinite(n) ? n : null;
+  return Number.isFinite(n) && n > 0 ? n : null; // 0 => null
 }
 
-export default function OfferCard({ offer, index, originSlug }: Props) {
-  const href = offer.affiliateUrl || '';
+export default function OfferCard({ offer, index }: { offer: Offer; index: number }) {
   const priceNum = asNumber(offer.price);
-  const priceLabel = priceNum != null ? `${priceNum.toFixed(2)} €` : undefined;
+  const ts = offer.lastChecked ? new Date(offer.lastChecked) : null;
 
-  const imgSrc = offer.imageUrl || '/og.svg';
-  const imgAlt =
-    offer.title ||
-    `${offer.merchant ?? 'Marchand'}${offer.productId ? ` #${offer.productId}` : ''}`;
+  const displayTitle =
+    (offer.title && offer.title.trim()) ||
+    (offer.brand && offer.brand.trim()) ||
+    (offer.merchant ?? '') ||
+    `#${offer.productId}`;
 
-  async function handleClick() {
-    try {
-      if (!href) return;
-      await fetch('/api/track-click', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          href,
-          merchant: offer.merchant,
-          slug: originSlug ?? 'offers',
-          pos: index + 1,
-          pathname: typeof window !== 'undefined' ? window.location.pathname : null,
-          referrer:
-            typeof document !== 'undefined' ? (document.referrer || null) : null,
-        }),
-        keepalive: true,
-      });
-    } catch {
-      // on ignore les erreurs réseau de tracking
-    }
-  }
-
-  const isOk = String(offer.httpStatus || '') === '200';
+  const imgSrc = offer.imageUrl && offer.imageUrl.trim().length > 0 ? offer.imageUrl : null;
 
   return (
-    <article className="flex gap-4 rounded-2xl border border-zinc-200 p-4 shadow-sm">
-      <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-xl bg-zinc-100">
-        <Image
-          src={imgSrc}
-          alt={imgAlt}
-          fill
-          sizes="112px"
-          className="object-cover"
-          priority={false}
-        />
+    <article className="flex items-start gap-4 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+      <div className="relative h-28 w-28 overflow-hidden rounded-xl bg-neutral-100">
+        {imgSrc ? (
+          <Image
+            src={imgSrc}
+            alt={displayTitle}
+            fill
+            sizes="112px"
+            className="object-cover"
+            priority={index < 2}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-xs text-neutral-400">
+            # {String(offer.productId)}
+          </div>
+        )}
       </div>
 
-      <div className="flex min-w-0 flex-1 flex-col justify-between">
-        <div className="min-w-0">
-          <h3 className="truncate text-base font-semibold">
-            {offer.title || offer.merchant || 'Offre'}
-          </h3>
+      <div className="min-w-0 flex-1">
+        <h3 className="truncate text-lg font-semibold">{displayTitle}</h3>
 
-          <p className="mt-1 text-sm text-zinc-600">
-            {priceLabel ? (
-              <>
-                Prix estimé : <span className="font-medium text-zinc-900">{priceLabel}</span>
-              </>
-            ) : (
-              'Prix non renseigné'
-            )}
-          </p>
+        <div className="mt-1 text-sm text-neutral-500">
+          {offer.merchant && <span className="mr-2">{offer.merchant}</span>}
+          {priceNum != null ? (
+            <span className="font-medium text-neutral-900">
+              — Prix estimé : {priceNum.toFixed(2)} €
+            </span>
+          ) : (
+            <span className="text-neutral-500">— Prix non renseigné</span>
+          )}
+        </div>
 
-          <p className="mt-1 text-xs text-zinc-500">
-            {isOk ? 'Lien vérifié' : 'Lien indisponible'}
-            {offer.lastChecked ? ` · ${new Date(offer.lastChecked).toLocaleString()}` : ''}
-          </p>
+        <div className="mt-1 text-xs text-neutral-400">
+          {ts ? <>Lien vérifié · {ts.toLocaleDateString()} {ts.toLocaleTimeString()}</> : 'Lien non vérifié'}
         </div>
 
         <div className="mt-3">
-          <a
-            href={href || '#'}
-            target="_blank"
-            rel="nofollow sponsored noopener"
-            onClick={handleClick}
-            className={`inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium ${
-              href && isOk
-                ? 'bg-black text-white hover:opacity-90'
-                : 'cursor-not-allowed bg-zinc-300 text-zinc-600'
-            }`}
-            aria-disabled={!href || !isOk}
-          >
-            Voir l’offre
-          </a>
+          {offer.affiliateUrl ? (
+            <AffiliateLink
+              href={offer.affiliateUrl}
+              className="inline-flex items-center rounded-xl bg-black px-4 py-2 text-white hover:opacity-90"
+            >
+              Voir l’offre
+            </AffiliateLink>
+          ) : (
+            <button
+              disabled
+              className="inline-flex cursor-not-allowed items-center rounded-xl bg-neutral-200 px-4 py-2 text-neutral-500"
+            >
+              Indisponible
+            </button>
+          )}
         </div>
       </div>
     </article>
