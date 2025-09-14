@@ -3,7 +3,7 @@
 
 import Image from 'next/image';
 
-type Offer = {
+export type Offer = {
   productId: string | number;
   merchant: string | null;
   price: string | number | null;
@@ -37,7 +37,6 @@ export default function OfferCard({ offer, index, originSlug }: Props) {
   const priceNum = asNumber(offer.price);
   const priceLabel = priceNum != null ? `${priceNum.toFixed(2)} €` : undefined;
 
-  // Image si fournie par le flux ; sinon fallback sur /og.svg (dans /public)
   const imgSrc = offer.imageUrl || '/og.svg';
   const imgAlt =
     offer.title ||
@@ -96,7 +95,6 @@ export default function OfferCard({ offer, index, originSlug }: Props) {
             )}
           </p>
 
-            {/* On affiche juste le statut, sans détails techniques */}
           <p className="mt-1 text-xs text-zinc-500">
             {isOk ? 'Lien vérifié' : 'Lien indisponible'}
             {offer.lastChecked ? ` · ${new Date(offer.lastChecked).toLocaleString()}` : ''}
