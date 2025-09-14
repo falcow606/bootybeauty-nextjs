@@ -1,129 +1,123 @@
 // components/OfferCard.tsx
 'use client';
 
+import Image from 'next/image';
+
 type Offer = {
   productId: string | number;
   merchant: string | null;
   price: string | number | null;
   availability: string | null;
   affiliateUrl: string | null;
-  commissionPct: string | number | null;
+  commissionPct: string | number | null; // non affiché côté UI publique
   httpStatus: number | string | null;
   lastChecked: string | null;
-  // Champs optionnels si dispos dans ton Google Sheet / API n8n
+
+  // Champs optionnels si un jour tu ajoutes des visuels / titres côté n8n
+  imageUrl?: string | null;
   title?: string | null;
-  image?: string | null; // ex: Image_URL dans le Sheet
 };
 
-export default function OfferCard({
-  offer,
-  index,
-  originSlug,
-}: {
+type Props = {
   offer: Offer;
   index: number;
+  /** Optionnel : fourni par la page produit pour tracer l’origine */
   originSlug?: string;
-}) {
-  const id = String(offer.productId ?? index);
-  const title =
-    (offer as any).title?.toString().trim() ||
-    `${offer.merchant ?? 'Marque'} – Réf. ${id}`;
-  const img =
-    (offer as any).image?.toString().trim() ||
-    'https://via.placeholder.com/600x400?text=Booty+Beauty';
-  const price =
-    offer.price != null && String(offer.price).trim() !== ''
-      ? String(offer.price)
-      : undefined;
+};
+
+function asNumber(value: string | number | null): number | null {
+  if (value == null) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  const n = Number(String(value).replace(',', '.').trim());
+  return Number.isFinite(n) ? n : null;
+}
+
+export default function OfferCard({ offer, index, originSlug }: Props) {
+  const href = offer.affiliateUrl || '';
+  const priceNum = asNumber(offer.price);
+  const priceLabel = priceNum != null ? `${priceNum.toFixed(2)} €` : undefined;
+
+  // Image si fournie par le flux ; sinon fallback sur /og.svg (dans /public)
+  const imgSrc = offer.imageUrl || '/og.svg';
+  const imgAlt =
+    offer.title ||
+    `${offer.merchant ?? 'Marchand'}${offer.productId ? ` #${offer.productId}` : ''}`;
+
+  async function handleClick() {
+    try {
+      if (!href) return;
+      await fetch('/api/track-click', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          href,
+          merchant: offer.merchant,
+          slug: originSlug ?? 'offers',
+          pos: index + 1,
+          pathname: typeof window !== 'undefined' ? window.location.pathname : null,
+          referrer:
+            typeof document !== 'undefined' ? (document.referrer || null) : null,
+        }),
+        keepalive: true,
+      });
+    } catch {
+      // on ignore les erreurs réseau de tracking
+    }
+  }
+
+  const isOk = String(offer.httpStatus || '') === '200';
 
   return (
-    <article className="group overflow-hidden rounded-2xl bg-white ring-1 ring-black/5 shadow-sm hover:shadow-md transition">
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-neutral-100">
-        {/* pas de next/image pour éviter la config de domaines */}
-        <img
-          src={img}
-          alt={title}
-          loading="lazy"
-          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+    <article className="flex gap-4 rounded-2xl border border-zinc-200 p-4 shadow-sm">
+      <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-xl bg-zinc-100">
+        <Image
+          src={imgSrc}
+          alt={imgAlt}
+          fill
+          sizes="112px"
+          className="object-cover"
+          priority={false}
         />
-        <div className="absolute left-3 top-3 inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 text-xs font-medium text-neutral-700 shadow">
-          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-          {offer.merchant ?? '—'}
-        </div>
       </div>
 
-      <div className="p-4">
-        <h3 className="line-clamp-2 text-base font-semibold leading-snug text-neutral-900">
-          {title}
-        </h3>
+      <div className="flex min-w-0 flex-1 flex-col justify-between">
+        <div className="min-w-0">
+          <h3 className="truncate text-base font-semibold">
+            {offer.title || offer.merchant || 'Offre'}
+          </h3>
 
-        <div className="mt-2 flex items-center justify-between">
-          <div className="text-sm text-neutral-600">
-            {price ? (
+          <p className="mt-1 text-sm text-zinc-600">
+            {priceLabel ? (
               <>
-                <span className="text-lg font-semibold text-neutral-900">
-                  {price}
-                </span>{' '}
-                <span className="text-xs">€</span>
+                Prix estimé : <span className="font-medium text-zinc-900">{priceLabel}</span>
               </>
             ) : (
-              <span className="text-sm italic text-neutral-500">Prix à vérifier</span>
+              'Prix non renseigné'
             )}
-          </div>
+          </p>
 
-          {offer.affiliateUrl ? (
-            <a
-              href={offer.affiliateUrl}
-              target="_blank"
-              rel="nofollow sponsored noopener"
-              className="inline-flex items-center gap-2 rounded-xl bg-neutral-900 px-3 py-2 text-sm font-medium text-white hover:bg-neutral-800"
-              onClick={() => {
-                // tracking côté client → appelle /api/track-click
-                fetch('/api/track-click', {
-                  method: 'POST',
-                  headers: { 'content-type': 'application/json' },
-                  body: JSON.stringify({
-                    href: offer.affiliateUrl,
-                    merchant: offer.merchant,
-                    slug: originSlug || 'offers',
-                    pos: index + 1,
-                    pathname: typeof window !== 'undefined' ? window.location.pathname : null,
-                    referrer: typeof document !== 'undefined' ? document.referrer || null : null,
-                  }),
-                  keepalive: true,
-                }).catch(() => {});
-              }}
-            >
-              Voir l’offre
-              <svg
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path d="M7 17L17 7M7 7h10v10" />
-              </svg>
-            </a>
-          ) : (
-            <span className="text-xs text-neutral-400">Lien indisponible</span>
-          )}
+            {/* On affiche juste le statut, sans détails techniques */}
+          <p className="mt-1 text-xs text-zinc-500">
+            {isOk ? 'Lien vérifié' : 'Lien indisponible'}
+            {offer.lastChecked ? ` · ${new Date(offer.lastChecked).toLocaleString()}` : ''}
+          </p>
         </div>
 
-        <div className="mt-2 flex items-center justify-between text-[11px] text-neutral-500">
-          <span>ID: {id}</span>
-          {String(offer.httpStatus || '') === '200' ? (
-            <span className="inline-flex items-center gap-1 text-emerald-600">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              OK
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-              À vérifier
-            </span>
-          )}
+        <div className="mt-3">
+          <a
+            href={href || '#'}
+            target="_blank"
+            rel="nofollow sponsored noopener"
+            onClick={handleClick}
+            className={`inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium ${
+              href && isOk
+                ? 'bg-black text-white hover:opacity-90'
+                : 'cursor-not-allowed bg-zinc-300 text-zinc-600'
+            }`}
+            aria-disabled={!href || !isOk}
+          >
+            Voir l’offre
+          </a>
         </div>
       </div>
     </article>
