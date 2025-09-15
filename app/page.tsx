@@ -114,24 +114,7 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen w-full" style={rootStyle}>
-      {/* HEADER */}
-      <header className="mx-auto max-w-6xl px-6 pt-6 pb-4">
-        <div className="flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3" aria-label="Booty & Cutie – Accueil">
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl" style={{ backgroundColor: "var(--accent)" }} />
-            <span className={`${bodoni.className} text-2xl`} style={{ color: "var(--text)" }}>
-              Booty & Cutie
-            </span>
-          </Link>
-          <nav className={`${nunito.className} hidden items-center gap-6 md:flex`} style={{ color: "var(--text)" }}>
-            <Link href="/offers" className="opacity-80 transition hover:opacity-100">Produits</Link>
-            <Link href="/blog" className="opacity-80 transition hover:opacity-100">Guides</Link>
-            <Link href="/about" className="opacity-80 transition hover:opacity-100">À propos</Link>
-            <Link href="/legal" className="opacity-80 transition hover:opacity-100">Mentions légales</Link>
-          </nav>
-        </div>
-      </header>
-
+    
       {/* HERO */}
       <section className="mx-auto grid max-w-6xl items-center gap-8 px-6 pb-8 pt-4 md:grid-cols-2">
         <div>
