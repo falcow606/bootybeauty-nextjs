@@ -7,18 +7,10 @@ const nunito = Nunito_Sans({ subsets: ["latin"], weight: ["300","400","600","700
 
 export const metadata = {
   title: "Offres — Booty & Cutie",
-  description: "Notre sélection de soins et bons plans beauté (peu d’items, triés avec soin).",
+  description: "Notre sélection de soins et bons plans beauté.",
 };
 
 type UnknownRecord = Record<string, unknown>;
-
-function truthy(v: unknown): boolean {
-  if (typeof v === "boolean") return v;
-  if (typeof v === "number") return v > 0;
-  if (v == null) return false;
-  const s = String(v).trim().toLowerCase();
-  return ["oui", "yes", "true", "1", "y", "ok"].includes(s);
-}
 
 function getStr(obj: UnknownRecord, keys: string[]): string | undefined {
   for (const k of keys) {
@@ -39,12 +31,13 @@ function mapOffer(row: UnknownRecord): Offer {
     imageUrl: getStr(row, ["imageUrl", "Image_URL", "Image", "image", "image_url"]),
     price: getStr(row, ["Prix (€)", "Price", "price"]),
     affiliateUrl: getStr(row, ["Affiliate_URL", "FinalURL", "Url", "url"]),
-    httpStatus: getStr(row, ["httpStatus", "status"]),
+    // httpStatus optionnel, on ne filtre pas dessus
   };
 }
 
 async function getAllOffers(): Promise<Offer[]> {
-  const url = process.env.N8N_OFFERS_URL;
+  // ✅ Fallback automatique : OFFERS → FEATURED
+  const url = process.env.N8N_OFFERS_URL || process.env.N8N_FEATURED_URL;
   if (!url) return [];
 
   const headers: Record<string, string> = {};
@@ -52,8 +45,8 @@ async function getAllOffers(): Promise<Offer[]> {
 
   const fetchInit: RequestInit & { next?: { revalidate?: number } } =
     process.env.VERCEL_ENV === "preview" || process.env.NODE_ENV !== "production"
-      ? { headers, cache: "no-store" }         // Preview: live
-      : { headers, next: { revalidate: 1800 } }; // Prod: ISR 30 min
+      ? { headers, cache: "no-store" }          // Preview: live
+      : { headers, next: { revalidate: 1800 } };// Prod: ISR 30 min
 
   const res = await fetch(url, fetchInit);
   if (!res.ok) return [];
@@ -65,15 +58,9 @@ async function getAllOffers(): Promise<Offer[]> {
       ((json as UnknownRecord)?.data as UnknownRecord[]) ||
       [];
 
-  // on garde peu de produits → pas de filtres, juste un tri doux:
-  // 1) Featured_Order si présent, 2) UpdatedAt desc, 3) Title asc
+  // Pas de filtres (tu m’as dit “peu de produits”)
+  // On applique juste un tri doux pour la lisibilité
   items.sort((a, b) => {
-    const ao = Number(getStr(a, ["Featured_Order", "featured_order"]) ?? "999");
-    const bo = Number(getStr(b, ["Featured_Order", "featured_order"]) ?? "999");
-    if (ao !== bo) return ao - bo;
-    const ad = new Date(getStr(a, ["UpdatedAt", "updatedAt"]) ?? 0).getTime();
-    const bd = new Date(getStr(b, ["UpdatedAt", "updatedAt"]) ?? 0).getTime();
-    if (ad !== bd) return bd - ad;
     const at = (getStr(a, ["Title", "Nom", "name"]) ?? "").toLowerCase();
     const bt = (getStr(b, ["Title", "Nom", "name"]) ?? "").toLowerCase();
     return at.localeCompare(bt);
@@ -92,7 +79,7 @@ export default async function OffersPage() {
           Nos offres sélectionnées
         </h1>
         <p className={`${nunito.className} mt-2 opacity-80`} style={{ color: "var(--text)" }}>
-          peu d’items, bien choisis. Mise à jour régulière, transparence sur l’affiliation.
+          Peu d’items, bien choisis. Transparence sur l’affiliation.
         </p>
       </header>
 
@@ -100,7 +87,7 @@ export default async function OffersPage() {
         <OffersClient items={offers} originSlug="offers" />
       ) : (
         <p className={`${nunito.className} opacity-80`} style={{ color: "var(--text)" }}>
-          Aucune offre pour le moment.
+          Aucune offre à afficher. Vérifie les variables <code>N8N_OFFERS_URL</code> ou <code>N8N_FEATURED_URL</code> dans Vercel.
         </p>
       )}
     </div>
