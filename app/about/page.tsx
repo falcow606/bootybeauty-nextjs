@@ -10,20 +10,27 @@ export const metadata = {
   description: "Notre mission, notre méthode et notre transparence sur l’affiliation.",
 };
 
+// Typage propre pour les variables CSS
+type CSSVars = React.CSSProperties & {
+  ["--accent"]: string;
+  ["--secondary"]: string;
+  ["--bg-light"]: string;
+  ["--bg-main"]: string;
+  ["--text"]: string;
+};
+
 export default function AboutPage() {
+  const rootStyle: CSSVars = {
+    "--accent": "#C4A092",
+    "--secondary": "#DABCB2",
+    "--bg-light": "#EBC8B2",
+    "--bg-main": "#FAF0E6",
+    "--text": "#333333",
+    backgroundColor: "var(--bg-main)",
+  };
+
   return (
-    <div
-      className="min-h-screen w-full"
-      style={{
-        // même palette que la Home
-        ["--accent" as any]: "#C4A092",
-        ["--secondary" as any]: "#DABCB2",
-        ["--bg-light" as any]: "#EBC8B2",
-        ["--bg-main" as any]: "#FAF0E6",
-        ["--text" as any]: "#333333",
-        backgroundColor: "var(--bg-main)",
-      }}
-    >
+    <div className="min-h-screen w-full" style={rootStyle}>
       <main className="mx-auto max-w-6xl px-6 py-12">
         <h1 className={`${bodoni.className} text-4xl md:text-5xl`} style={{ color: "var(--text)" }}>
           À propos de <span style={{ color: "var(--accent)" }}>Booty & Cutie</span>
@@ -31,7 +38,7 @@ export default function AboutPage() {
 
         <div className="mt-8 grid items-start gap-10 md:grid-cols-2">
           <div className={`${nunito.className} space-y-5 text-base leading-relaxed`} style={{ color: "var(--text)" }}>
-            {/* Colle ici ton texte */}
+            {/* ➜ Colle ici TON texte rédigé */}
             <p>
               Bienvenue sur Booty & Cutie — le blog beauté qui t’aide à trouver les meilleurs soins pour les fesses,
               des produits intimes sûrs et tous les bons plans du moment. Notre promesse : sélection éditoriale
@@ -66,7 +73,7 @@ export default function AboutPage() {
           </div>
 
           <div className="relative">
-            {/* Remplace l’image par la tienne : /images/about.jpg */}
+            {/* ➜ Remplace l’image par la tienne : /images/about.jpg (ou ton fichier) */}
             <Image
               src="/images/about.jpg"
               alt="Booty & Cutie — coulisses & intention éditoriale"
