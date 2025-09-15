@@ -6,8 +6,8 @@ import Link from 'next/link';
 
 export type CardOffer = {
   // Identifiants
-  id?: string;
-  productId?: string;
+  id?: string | number;
+  productId?: string | number;
   slug?: string;
 
   // Libellés & visuels
@@ -61,7 +61,7 @@ export default function OfferCard({ offer, index, originSlug }: OfferCardProps) 
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          productId: offer.productId ?? offer.id ?? title,
+          productId: String(offer.productId ?? offer.id ?? title),
           index,
           originSlug,
           target: affiliate,
