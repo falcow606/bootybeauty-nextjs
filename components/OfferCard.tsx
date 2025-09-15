@@ -4,7 +4,7 @@ import * as React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 
-/** Type large qui couvre tes différentes sources (sheet, n8n, mapping), y compris `null` */
+/** Type large pour couvrir Sheet/n8n (null-safe) */
 export type AnyOffer = {
   // Identifiants
   id?: string | number | null;
@@ -32,36 +32,29 @@ export type AnyOffer = {
   finalUrl?: string | null;
   url?: string | null;
 
-  // Statut HTTP (pour filtres côté fiche produit)
+  // Statut HTTP (optionnel)
   httpStatus?: number | string | null;
 };
 
-/** Compat noms de types ailleurs dans le projet */
-export type CardOffer = AnyOffer;
+/** Alias utilisé ailleurs dans le projet */
 export type Offer = AnyOffer;
 
 export type OfferCardProps = {
   offer: AnyOffer;
   index: number;
-  /** slug de la page d'origine (ex: fiche produit courante), utilisé pour le tracking */
+  /** slug de la page d'origine (ex: 'offers' ou fiche courante) */
   originSlug?: string;
 };
 
 export default function OfferCard({ offer, index, originSlug }: OfferCardProps) {
-  const title =
-    offer.title ?? offer.name ?? 'Produit';
-  const brand =
-    offer.brand ?? offer.merchant ?? offer.marchand ?? '';
-  const img =
-    offer.imageUrl ?? offer.Image_URL ?? offer.image_url ?? offer.image ?? '';
-  const priceRaw =
-    offer.price ?? offer.priceEur ?? offer['Prix (€)'] ?? '';
-  const price =
-    typeof priceRaw === 'number' ? `${priceRaw.toFixed(2)}€` : (priceRaw || '');
+  const title = offer.title ?? offer.name ?? 'Produit';
+  const brand = offer.brand ?? offer.merchant ?? offer.marchand ?? '';
+  const img = offer.imageUrl ?? offer.Image_URL ?? offer.image_url ?? offer.image ?? '';
+  const priceRaw = offer.price ?? offer.priceEur ?? offer['Prix (€)'] ?? '';
+  const price = typeof priceRaw === 'number' ? `${priceRaw.toFixed(2)}€` : (priceRaw || '');
 
   const detailsHref = offer.slug ? `/p/${offer.slug}` : '/offers';
-  const affiliate =
-    offer.affiliateUrl ?? offer.finalUrl ?? offer.url ?? '';
+  const affiliate = offer.affiliateUrl ?? offer.finalUrl ?? offer.url ?? '';
 
   async function trackClick() {
     try {
@@ -81,64 +74,64 @@ export default function OfferCard({ offer, index, originSlug }: OfferCardProps) 
   }
 
   return (
-    <article className="flex flex-col rounded-3xl bg-white p-5 shadow-md">
+    <article
+      className="group flex flex-col overflow-hidden rounded-3xl bg-white shadow-md transition hover:shadow-lg"
+      style={{ border: '1px solid var(--bg-light)' }}
+    >
       <div className="relative">
         <Image
           src={img || '/images/product-placeholder.jpg'}
           alt={`${title} — photo produit`}
-          width={600}
-          height={600}
-          className="aspect-square w-full rounded-2xl object-cover"
+          width={800}
+          height={800}
+          className="aspect-square w-full object-cover transition duration-300 group-hover:scale-[1.01]"
+          priority={false}
         />
       </div>
 
-      <div className="mt-4 flex items-start justify-between gap-4">
+      <div className="flex flex-1 flex-col p-5">
         <div>
-          <h3 className="text-xl font-semibold" style={{ color: 'var(--accent)' }}>
+          <h3 className="text-lg font-semibold" style={{ color: 'var(--accent)' }}>
             {title}
           </h3>
-          <p className="text-sm opacity-80" style={{ color: 'var(--text)' }}>
+          <p className="mt-1 text-sm opacity-80" style={{ color: 'var(--text)' }}>
             {brand || 'Soin corps • 200 ml'}
           </p>
         </div>
-        <span className="inline-block rounded-full border px-3 py-1 text-sm" style={{ borderColor: 'var(--bg-light)' }}>
-          Recommandé
-        </span>
-      </div>
 
-      <div className="mt-4 flex items-center justify-between">
-        <span className="text-xl font-semibold" style={{ color: 'var(--text)' }}>
-          {price}
-        </span>
-        <div className="flex items-center gap-2">
-          <Link
-            href={detailsHref}
-            className="rounded-2xl border px-5 py-3 transition hover:opacity-90"
-            style={{ borderColor: 'var(--accent)', color: 'var(--accent)', backgroundColor: 'transparent' }}
-          >
-            Détails
-          </Link>
-
-          {affiliate ? (
+        <div className="mt-4 flex items-center justify-between">
+          <span className="text-lg font-semibold" style={{ color: 'var(--text)' }}>
+            {price}
+          </span>
+          <div className="flex items-center gap-2">
             <Link
-              href={affiliate}
-              target="_blank"
-              rel="nofollow sponsored noopener"
-              onClick={trackClick}
-              className="rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
-              style={{ backgroundColor: 'var(--accent)' }}
+              href={detailsHref}
+              className="rounded-2xl border px-4 py-2 text-sm transition hover:opacity-90"
+              style={{ borderColor: 'var(--accent)', color: 'var(--accent)', backgroundColor: 'transparent' }}
             >
-              Choisir
+              Détails
             </Link>
-          ) : (
-            <Link
-              href="/offers"
-              className="rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
-              style={{ backgroundColor: 'var(--accent)' }}
-            >
-              Choisir
-            </Link>
-          )}
+            {affiliate ? (
+              <Link
+                href={affiliate}
+                target="_blank"
+                rel="nofollow sponsored noopener"
+                onClick={trackClick}
+                className="rounded-2xl px-4 py-2 text-sm text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
+                style={{ backgroundColor: 'var(--accent)' }}
+              >
+                Choisir
+              </Link>
+            ) : (
+              <Link
+                href="/offers"
+                className="rounded-2xl px-4 py-2 text-sm text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
+                style={{ backgroundColor: 'var(--accent)' }}
+              >
+                Choisir
+              </Link>
+            )}
+          </div>
         </div>
       </div>
     </article>
