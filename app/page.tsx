@@ -184,7 +184,7 @@ export default async function HomePage() {
               key={p.id || p.slug || p.title || String(i)}
               title={p.title}
               price={p.price || ""}
-              tag={featured?.length ? "À l'affiche" : "Best-seller"}
+              tag={featured?.length ? "À l'affiche" : undefined}
               imageSrc={p.imageUrl}
               brand={p.brand}
               href={p.affiliateUrl}
@@ -300,7 +300,7 @@ function ProductCard({
             {brand ? brand : "Soin corps • 200 ml"}
           </p>
         </div>
-        <Badge>{tag}</Badge>
+        {tag ? <Badge>{tag}</Badge> : null}
       </div>
       <div className="mt-4 flex items-center justify-between">
         <span className={`${bodoni.className} text-xl`} style={{ color: "var(--text)" }}>
