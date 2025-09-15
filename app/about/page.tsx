@@ -1,41 +1,98 @@
-// app/about/page.tsx
-import type { Metadata } from 'next';
+import Image from "next/image";
+import Link from "next/link";
+import { Bodoni_Moda, Nunito_Sans } from "next/font/google";
 
-export const metadata: Metadata = {
-  title: 'À propos',
-  description:
-    "Notre promesse : une sélection claire des meilleurs soins booty, prix comparés et offres mises à jour.",
-  alternates: { canonical: '/about' },
+const bodoni = Bodoni_Moda({ subsets: ["latin"], style: ["normal"], weight: ["400","600","700"] });
+const nunito = Nunito_Sans({ subsets: ["latin"], weight: ["300","400","600","700"] });
+
+export const metadata = {
+  title: "À propos — Booty & Cutie",
+  description: "Notre mission, notre méthode et notre transparence sur l’affiliation.",
 };
 
 export default function AboutPage() {
   return (
-    <main className="mx-auto max-w-3xl px-6 py-12">
-      <h1 className="text-3xl font-semibold tracking-tight">À propos</h1>
-      <div className="prose prose-neutral mt-6 max-w-none dark:prose-invert">
-        <p>
-          Booty Beauty est un sélecteur de soins pour fessiers : nous mettons en avant des produits
-          pertinents, comparons les prix et pointons vers les meilleures offres disponibles.
-        </p>
-        <h2>Comment on choisit</h2>
-        <ul>
-          <li>Sélection éditoriale (efficacité, composition, popularité réelle).</li>
-          <li>Prix surveillés et mises à jour automatiques.</li>
-          <li>Transparence : liens affiliés indiqués, aucun surcoût pour vous.</li>
-        </ul>
-        <h2>Pourquoi on existe</h2>
-        <p>
-          Gagner du temps et de l’argent : au lieu d’onglets ouverts partout, une page claire
-          présentant l’essentiel… et un bouton “Voir l’offre” quand c’est le bon moment.
-        </p>
-        <p>
-          Une question, une marque à suggérer ? Écrivez-nous :{' '}
-          <a className="underline" href="mailto:contact@bootybeauty.example">
-            contact@bootybeauty.example
-          </a>
-          .
-        </p>
-      </div>
-    </main>
+    <div
+      className="min-h-screen w-full"
+      style={{
+        // même palette que la Home
+        ["--accent" as any]: "#C4A092",
+        ["--secondary" as any]: "#DABCB2",
+        ["--bg-light" as any]: "#EBC8B2",
+        ["--bg-main" as any]: "#FAF0E6",
+        ["--text" as any]: "#333333",
+        backgroundColor: "var(--bg-main)",
+      }}
+    >
+      <main className="mx-auto max-w-6xl px-6 py-12">
+        <h1 className={`${bodoni.className} text-4xl md:text-5xl`} style={{ color: "var(--text)" }}>
+          À propos de <span style={{ color: "var(--accent)" }}>Booty & Cutie</span>
+        </h1>
+
+        <div className="mt-8 grid items-start gap-10 md:grid-cols-2">
+          <div className={`${nunito.className} space-y-5 text-base leading-relaxed`} style={{ color: "var(--text)" }}>
+            {/* Colle ici ton texte */}
+            <p>
+              Bienvenue sur Booty & Cutie — le blog beauté qui t’aide à trouver les meilleurs soins pour les fesses,
+              des produits intimes sûrs et tous les bons plans du moment. Notre promesse : sélection éditoriale
+              exigeante, tests transparents et recommandations argumentées.
+            </p>
+            <p>
+              Nous comparons les formules, les textures, les retours d’expérience et les prix pour te proposer une shortlist
+              claire. Lorsque tu achètes via nos liens, nous pouvons percevoir une commission d’affiliation ; cela n’affecte pas
+              ton prix et nous permet de financer ce travail.
+            </p>
+            <p>
+              Tu peux aussi lire nos guides pour comprendre comment choisir les produits adaptés à ta peau et à tes objectifs,
+              ainsi que nos fiches détaillées, mises à jour régulièrement.
+            </p>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link
+                href="/offers"
+                className="rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
+                style={{ backgroundColor: "var(--accent)" }}
+              >
+                Voir les offres
+              </Link>
+              <Link
+                href="/legal"
+                className="rounded-2xl border px-5 py-3 transition hover:opacity-90"
+                style={{ borderColor: "var(--accent)", color: "var(--accent)", backgroundColor: "transparent" }}
+              >
+                Mentions & transparence
+              </Link>
+            </div>
+          </div>
+
+          <div className="relative">
+            {/* Remplace l’image par la tienne : /images/about.jpg */}
+            <Image
+              src="/images/about.jpg"
+              alt="Booty & Cutie — coulisses & intention éditoriale"
+              width={1200}
+              height={900}
+              className="aspect-[4/3] w-full rounded-3xl object-cover shadow-xl"
+              priority
+            />
+          </div>
+        </div>
+
+        <section className="mt-12 grid gap-6 md:grid-cols-3">
+          <Item title="Méthode claire">Critères publics, sources citées, choix expliqués.</Item>
+          <Item title="Indépendance">Sélection éditoriale : pas d’articles sponsorisés déguisés.</Item>
+          <Item title="Mises à jour">Offres & contenus révisés régulièrement.</Item>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function Item({ title, children }: React.PropsWithChildren<{ title: string }>) {
+  return (
+    <div className="rounded-3xl border p-5" style={{ borderColor: "var(--bg-light)" }}>
+      <h3 className="text-lg" style={{ color: "var(--text)" }}>{title}</h3>
+      <p className="mt-2 text-sm opacity-80" style={{ color: "var(--text)" }}>{children}</p>
+    </div>
   );
 }
