@@ -58,7 +58,7 @@ async function getFeaturedOffers(): Promise<FeaturedProduct[]> {
   const headers: Record<string, string> = {};
   if (process.env.N8N_OFFERS_KEY) headers["x-api-key"] = String(process.env.N8N_OFFERS_KEY);
 
-  // Preview: pas de cache (tu vois direct les changements de la Sheet). Prod: revalidate 30 min.
+  // Preview: pas de cache. Prod: revalidate 30 min.
   const fetchInit: RequestInit & { next?: { revalidate?: number } } =
     process.env.VERCEL_ENV === "preview" || process.env.NODE_ENV !== "production"
       ? { headers, cache: "no-store" }
@@ -74,12 +74,10 @@ async function getFeaturedOffers(): Promise<FeaturedProduct[]> {
       ((json as UnknownRecord)?.data as UnknownRecord[]) ||
       [];
 
-  // Si endpoint générique: filtrer via colonne `Featured` (oui/true/1)
   const filtered = process.env.N8N_FEATURED_URL
     ? items
     : items.filter((r) => truthy(r["Featured"]) || truthy(r["A l affiche"]) || truthy(r["Featured?"]));
 
-  // Ordonner par Featured_Order puis UpdatedAt desc
   filtered.sort((a, b) => {
     const ao = Number(getStr(a, ["Featured_Order", "featured_order"]) ?? "999");
     const bo = Number(getStr(b, ["Featured_Order", "featured_order"]) ?? "999");
@@ -128,7 +126,8 @@ export default async function HomePage() {
           <nav className={`${nunito.className} hidden items-center gap-6 md:flex`} style={{ color: "var(--text)" }}>
             <Link href="/offers" className="opacity-80 transition hover:opacity-100">Produits</Link>
             <Link href="/blog" className="opacity-80 transition hover:opacity-100">Guides</Link>
-            <Link href="/legal" className="opacity-80 transition hover:opacity-100">À propos / Mentions</Link>
+            <Link href="/about" className="opacity-80 transition hover:opacity-100">À propos</Link>
+            <Link href="/legal" className="opacity-80 transition hover:opacity-100">Mentions légales</Link>
           </nav>
         </div>
       </header>

@@ -1,46 +1,51 @@
-// app/disclosure/page.tsx
-import type { Metadata } from 'next';
-import Link from 'next/link';
+import { Bodoni_Moda, Nunito_Sans } from "next/font/google";
 
-export const metadata: Metadata = {
-  title: 'Disclosure — Booty Beauty',
-  description:
-    "Explication transparente de notre modèle : certains liens sont affiliés, cela nous rémunère sans surcoût pour vous.",
-  alternates: { canonical: 'https://bootybeauty-nextjs.vercel.app/disclosure' },
+const bodoni = Bodoni_Moda({ subsets: ["latin"], style: ["normal"], weight: ["400","600","700"] });
+const nunito = Nunito_Sans({ subsets: ["latin"], weight: ["300","400","600","700"] });
+
+export const metadata = {
+  title: "Transparence (Affiliation) — Booty & Cutie",
+  description: "Notre politique d’affiliation et de transparence.",
+};
+
+type CSSVars = React.CSSProperties & {
+  ["--accent"]: string;
+  ["--secondary"]: string;
+  ["--bg-light"]: string;
+  ["--bg-main"]: string;
+  ["--text"]: string;
 };
 
 export default function DisclosurePage() {
+  const rootStyle: CSSVars = {
+    "--accent": "#C4A092",
+    "--secondary": "#DABCB2",
+    "--bg-light": "#EBC8B2",
+    "--bg-main": "#FAF0E6",
+    "--text": "#333333",
+    backgroundColor: "var(--bg-main)",
+  };
+
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
-      <h1 className="text-3xl font-semibold">Disclosure</h1>
-
-      <div className="prose prose-compact mt-6 max-w-none text-zinc-800 dark:text-zinc-200">
-        <p>
-          Sur Booty Beauty, certains liens vers des marchands (ex. Amazon, YSL Beauty, etc.)
-          sont des <strong>liens d’affiliation</strong>. Si vous achetez via ces liens, nous
-          pouvons percevoir une commission. <strong>Le prix ne change pas pour vous</strong>.
-        </p>
-
-        <h2>Notre approche</h2>
-        <ul>
-          <li>Nous sélectionnons d’abord les produits pour leur intérêt (qualité, avis, prix).</li>
-          <li>Nous comparons les offres et mettons en avant la plus intéressante au moment T.</li>
-          <li>La présence d’un lien affilié n’influe pas nos avis ni nos choix éditoriaux.</li>
-        </ul>
-
-        <h2>Pourquoi l’affiliation&nbsp;?</h2>
-        <p>
-          C’est ce qui nous permet de financer la sélection éditoriale, la surveillance des prix,
-          l’hébergement et les améliorations du site – <strong>sans publicité intrusive</strong>.
-        </p>
-
-        <h2>Transparence</h2>
-        <p>
-          Vous devez être informé·e : nous indiquons clairement lorsque des liens peuvent nous
-          rémunérer. Si vous avez des questions, contactez-nous via la page{' '}
-          <Link href="/about" className="underline">À propos</Link>.
-        </p>
-      </div>
-    </main>
+    <div className="min-h-screen w-full" style={rootStyle}>
+      <main className="mx-auto max-w-4xl px-6 py-12">
+        <h1 className={`${bodoni.className} text-4xl md:text-5xl`} style={{ color: "var(--text)" }}>
+          Transparence & affiliation
+        </h1>
+        <div className={`${nunito.className} mt-6 space-y-5`} style={{ color: "var(--text)" }}>
+          <p>
+            Certains liens sur ce site sont des liens d’affiliation. Si tu achètes via ces liens, nous pouvons percevoir
+            une commission. Cela ne change rien au prix que tu paies.
+          </p>
+          <p>
+            Les sélections restent éditoriales et indépendantes. Les offres sont mises à jour régulièrement et indiquées
+            comme affiliées lorsque c’est le cas.
+          </p>
+          <p>
+            Merci — ces commissions aident à financer la création des contenus, tests et comparatifs.
+          </p>
+        </div>
+      </main>
+    </div>
   );
 }
