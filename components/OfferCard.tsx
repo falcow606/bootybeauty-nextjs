@@ -36,7 +36,6 @@ export type AnyOffer = {
   httpStatus?: number | string | null;
 };
 
-/** Alias utilisé ailleurs dans le projet */
 export type Offer = AnyOffer;
 
 export type OfferCardProps = {
@@ -75,23 +74,28 @@ export default function OfferCard({ offer, index, originSlug }: OfferCardProps) 
 
   return (
     <article
-      className="group flex flex-col overflow-hidden rounded-3xl bg-white shadow-md transition hover:shadow-lg"
-      style={{ border: '1px solid var(--bg-light)' }}
+      className="group flex flex-col overflow-hidden rounded-3xl bg-white shadow-md ring-1 transition hover:shadow-lg"
+      style={{ ringColor: 'var(--bg-light)' as unknown as string, boxShadow: '0 8px 20px rgba(0,0,0,0.06)' }}
     >
-      <div className="relative">
-        <Image
-          src={img || '/images/product-placeholder.jpg'}
-          alt={`${title} — photo produit`}
-          width={800}
-          height={800}
-          className="aspect-square w-full object-cover transition duration-300 group-hover:scale-[1.01]"
-          priority={false}
-        />
+      {/* Frame image avec bordure blanche bien visible */}
+      <div className="p-3">
+        <div className="relative rounded-2xl bg-[var(--bg-main)] p-2">
+          <div className="overflow-hidden rounded-xl border-4 border-white shadow-sm">
+            <Image
+              src={img || '/images/product-placeholder.jpg'}
+              alt={`${title} — photo produit`}
+              width={800}
+              height={800}
+              className="aspect-square w-full object-cover transition duration-300 group-hover:scale-[1.01]"
+              priority={false}
+            />
+          </div>
+        </div>
       </div>
 
-      <div className="flex flex-1 flex-col p-5">
+      <div className="flex flex-1 flex-col px-5 pb-5">
         <div>
-          <h3 className="text-lg font-semibold" style={{ color: 'var(--accent)' }}>
+          <h3 className="text-lg font-semibold leading-snug" style={{ color: 'var(--accent)' }}>
             {title}
           </h3>
           <p className="mt-1 text-sm opacity-80" style={{ color: 'var(--text)' }}>
