@@ -14,6 +14,14 @@ export const metadata = {
 
 type UnknownRecord = Record<string, unknown>;
 
+// ---------- utils typés ----------
+function pick<T extends object, K extends keyof T>(obj: T, keys: K[]): Partial<T> {
+  const out: Partial<T> = {};
+  for (const k of keys) {
+    if (k in obj) out[k] = obj[k];
+  }
+  return out;
+}
 function getVal(obj: UnknownRecord, keys: string[]): unknown {
   for (const k of keys) {
     if (k in obj) return obj[k];
@@ -27,27 +35,28 @@ function getStr(obj: UnknownRecord, keys: string[]): string | undefined {
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   return undefined;
 }
+function normalizeStr(v: unknown): string {
+  if (v == null) return "";
+  return typeof v === "string" ? v : String(v);
+}
 
-/** Récupère le premier tableau pertinent où qu’il se cache */
-function getFirstArray(json: unknown): UnknownRecord[] {
+/** Renvoie le premier tableau trouvé dans un JSON, même imbriqué */
+function firstArray(json: unknown): UnknownRecord[] {
   if (Array.isArray(json)) return json as UnknownRecord[];
   if (json && typeof json === "object") {
     const obj = json as UnknownRecord;
-
-    // chemins classiques
-    const directKeys = ["items","data","result","rows","records","list","values"];
-    for (const k of directKeys) {
-      const v = obj[k];
+    const candidates = ["items","data","result","rows","records","list","values","results"];
+    for (const key of candidates) {
+      const v = obj[key];
       if (Array.isArray(v)) return v as UnknownRecord[];
     }
-
-    // recherche dans sous-objets (ex: { result: { items: [...] } })
+    // recherche une profondeur
     for (const v of Object.values(obj)) {
       if (Array.isArray(v)) return v as UnknownRecord[];
       if (v && typeof v === "object") {
         const sub = v as UnknownRecord;
-        for (const k of directKeys) {
-          const vv = sub[k];
+        for (const key of candidates) {
+          const vv = sub[key];
           if (Array.isArray(vv)) return vv as UnknownRecord[];
         }
       }
@@ -56,6 +65,59 @@ function getFirstArray(json: unknown): UnknownRecord[] {
   return [];
 }
 
+/** Petit parseur CSV (gestion des guillemets, ; ou ,) */
+function parseCSV(text: string): UnknownRecord[] {
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  if (!lines.length) return [];
+
+  // devine le séparateur sur l'entête
+  const head = lines[0];
+  const comma = (head.match(/,/g) || []).length;
+  const semi = (head.match(/;/g) || []).length;
+  const delim = semi > comma ? ";" : ",";
+
+  // split CSV ligne par ligne en respectant les guillemets
+  const splitLine = (line: string): string[] => {
+    const out: string[] = [];
+    let cur = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          cur += '"'; // échappement ""
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (ch === delim && !inQuotes) {
+        out.push(cur);
+        cur = "";
+      } else {
+        cur += ch;
+      }
+    }
+    out.push(cur);
+    return out.map((c) => c.replace(/^"(.*)"$/, "$1"));
+  };
+
+  const headers = splitLine(lines[0]).map((h) => h.trim());
+  const rows: UnknownRecord[] = [];
+  for (let li = 1; li < lines.length; li++) {
+    const cols = splitLine(lines[li]);
+    const row: UnknownRecord = {};
+    headers.forEach((h, i) => {
+      row[h] = cols[i] ?? "";
+    });
+    rows.push(row);
+  }
+  return rows;
+}
+
+/** Map une ligne “souple” → Offer */
 function mapOffer(row: UnknownRecord): Offer {
   return {
     id: getStr(row, ["Product_ID","product_id","productId","ID","id"]),
@@ -70,34 +132,66 @@ function mapOffer(row: UnknownRecord): Offer {
   };
 }
 
+/** Essaie OFFERS_URL → OFFERS_API → FEATURED_URL → SHEETS_OFFERS_CSV */
 async function getAllOffers(): Promise<Offer[]> {
-  // ✅ Fallback auto : N8N_OFFERS_URL → N8N_FEATURED_URL
-  const url = process.env.N8N_OFFERS_URL || process.env.N8N_FEATURED_URL;
-  if (!url) return [];
+  const sources = [
+    { url: process.env.N8N_OFFERS_URL, needsKey: true },
+    { url: process.env.N8N_OFFERS_API, needsKey: true },
+    { url: process.env.N8N_FEATURED_URL, needsKey: true },
+    { url: process.env.SHEETS_OFFERS_CSV, needsKey: false },
+  ].filter((s) => !!s.url) as { url: string; needsKey: boolean }[];
 
-  const headers: Record<string, string> = {};
-  if (process.env.N8N_OFFERS_KEY) headers["x-api-key"] = String(process.env.N8N_OFFERS_KEY);
+  const headersBase: Record<string, string> = {};
+  if (process.env.N8N_OFFERS_KEY) headersBase["x-api-key"] = String(process.env.N8N_OFFERS_KEY);
 
-  // Preview: live (no-store) / Prod: ISR 30 min
-  const fetchInit: RequestInit & { next?: { revalidate?: number } } =
+  const fetchInitBase: RequestInit & { next?: { revalidate?: number } } =
     process.env.VERCEL_ENV === "preview" || process.env.NODE_ENV !== "production"
-      ? { headers, cache: "no-store" }
-      : { headers, next: { revalidate: 1800 } };
+      ? { cache: "no-store" }
+      : { next: { revalidate: 1800 } };
 
-  const res = await fetch(url, fetchInit);
-  if (!res.ok) return [];
+  for (const src of sources) {
+    try {
+      const init: RequestInit & { next?: { revalidate?: number } } = { ...fetchInitBase };
+      if (src.needsKey && headersBase["x-api-key"]) init.headers = headersBase;
 
-  const json = (await res.json()) as unknown;
-  const rows = getFirstArray(json);
+      const res = await fetch(src.url, init);
+      if (!res.ok) continue;
 
-  // Tri doux : titre A→Z (peu de produits)
-  rows.sort((a, b) => {
-    const at = (getStr(a, ["Title","Nom","name","title"]) ?? "").toLowerCase();
-    const bt = (getStr(b, ["Title","Nom","name","title"]) ?? "").toLowerCase();
-    return at.localeCompare(bt);
-  });
+      const ct = normalizeStr(res.headers.get("content-type")).toLowerCase();
+      let rows: UnknownRecord[] = [];
 
-  return rows.map(mapOffer);
+      if (ct.includes("application/json") || ct.includes("application/vnd.api+json") || ct.includes("text/json")) {
+        const json = (await res.json()) as unknown;
+        rows = firstArray(json);
+      } else {
+        const text = await res.text();
+        // Si c'est du JSON renvoyé en text/plain
+        const trimmed = text.trim();
+        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+          const json = JSON.parse(trimmed) as unknown;
+          rows = firstArray(json);
+        } else {
+          rows = parseCSV(text);
+        }
+      }
+
+      if (!rows.length) continue;
+
+      // Tri doux A→Z
+      rows.sort((a, b) => {
+        const at = (getStr(a, ["Title","Nom","name","title"]) ?? "").toLowerCase();
+        const bt = (getStr(b, ["Title","Nom","name","title"]) ?? "").toLowerCase();
+        return at.localeCompare(bt);
+      });
+
+      return rows.map(mapOffer);
+    } catch {
+      // essaie la source suivante
+      continue;
+    }
+  }
+
+  return [];
 }
 
 export default async function OffersPage() {
@@ -118,7 +212,11 @@ export default async function OffersPage() {
         <OffersClient items={offers} originSlug="offers" />
       ) : (
         <p className={`${nunito.className} opacity-80`} style={{ color: "var(--text)" }}>
-          Aucune offre à afficher. Vérifie l’endpoint défini dans <code>N8N_OFFERS_URL</code> ou <code>N8N_FEATURED_URL</code>.
+          Aucune offre à afficher. Assure-toi qu’au moins l’une de ces variables est renseignée :
+          <code className="mx-1">N8N_OFFERS_URL</code> /
+          <code className="mx-1">N8N_OFFERS_API</code> /
+          <code className="mx-1">N8N_FEATURED_URL</code> /
+          <code className="mx-1">SHEETS_OFFERS_CSV</code>.
         </p>
       )}
     </div>
