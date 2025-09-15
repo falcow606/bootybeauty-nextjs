@@ -123,14 +123,14 @@ type ProductContent = {
   howTo?: string;
   ingredients?: string;
   faq?: { q: string; a: string }[];
-  rating?: number; // 0..5 (pas de demi = 0.5 ok)
+  rating?: number; // 0..5 (0,5 ok)
 };
 function mapContent(row: UnknownRecord): ProductContent | null {
   const slug = getStr(row, ["Slug","slug"]);
   if (!slug) return null;
   const title = getStr(row, ["Title","Titre","H1","h1","name"]);
   const subtitle = getStr(row, ["Subtitle","Sous-titre","sub"]);
-  const heroImage = getStr(row, ["Hero","Hero_Image","Hero URL","Image_Hero","imageHero","Hero "]); // tolère 'Hero ' avec espace
+  const heroImage = getStr(row, ["Hero","Hero_Image","Hero URL","Image_Hero","imageHero","Hero "]);
   const intro = getStr(row, ["Intro","Introduction","lead","chapo"]);
   const prosRaw = getStr(row, ["Pros","Pour","Plus","On_aime"]);
   const consRaw = getStr(row, ["Cons","Contre","Moins","A_savoir"]);
@@ -138,7 +138,7 @@ function mapContent(row: UnknownRecord): ProductContent | null {
   const ingredients = getStr(row, ["Ingredients","Ingrédients","Key_Ingredients"]);
   const note = getStr(row, ["Note globale (sur 5)","Note","Rating","Score"]);
 
-  // FAQ: colonnes FAQ_Q1/FAQ_A1, FAQ_Q2/FAQ_A2 ...
+  // FAQ Q/A paires
   const faq: { q: string; a: string }[] = [];
   for (let i = 1; i <= 6; i++) {
     const q = getStr(row, [`FAQ_Q${i}`, `FAQ${i}_Q`, `Question${i}`]);
@@ -161,7 +161,7 @@ function mapContent(row: UnknownRecord): ProductContent | null {
   };
 }
 
-/* ============== fetch data from multiple sources ============== */
+/* ============== fetch data (multi-sources) ============== */
 const baseInit: RequestInit & { next?: { revalidate?: number } } =
   process.env.VERCEL_ENV === "preview" || process.env.NODE_ENV !== "production"
     ? { cache: "no-store" }
@@ -205,18 +205,18 @@ async function getAllOffers(): Promise<Offer[]> {
 }
 
 async function getAllContent(): Promise<ProductContent[]> {
-  // principal : SHEETS_CONTENT_CSV (CSV), mais on accepte JSON
   const rows = await fetchRows(process.env.SHEETS_CONTENT_CSV, false);
   const mapped = rows.map(mapContent).filter(Boolean) as ProductContent[];
   return mapped;
 }
 
 /* ===================== SEO metadata ===================== */
-export async function generateMetadata({ params }: { params: { slug: string } }) {
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
   const [content, offers] = await Promise.all([getAllContent(), getAllOffers()]);
-  const c = content.find((x) => x.slug === params.slug);
-  const o = offers.find((x) => normStr(x.slug).toLowerCase() === params.slug.toLowerCase());
-  const title = c?.title || o?.title || params.slug;
+  const c = content.find((x) => x.slug === slug);
+  const o = offers.find((x) => normStr(x.slug).toLowerCase() === slug.toLowerCase());
+  const title = c?.title || o?.title || slug;
   const desc =
     c?.intro ||
     `Test et avis — ${title}. Sélection Booty & Cutie : conseils, utilisation et meilleures offres.`;
@@ -224,8 +224,8 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 }
 
 /* ============================== PAGE ============================== */
-export default async function ProductPage({ params }: { params: { slug: string } }) {
-  const slug = params.slug;
+export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
 
   const [offers, contents] = await Promise.all([getAllOffers(), getAllContent()]);
   const offer =
@@ -401,7 +401,6 @@ function Card({ title, children }: React.PropsWithChildren<{ title: string }>) {
 
 /* ================ Apricot rating (0..5, demi-points) ================ */
 function ApricotRating({ rating }: { rating: number }) {
-  // construit un tableau de 5 icônes: full/half/empty
   const items = Array.from({ length: 5 }, (_, i) => {
     const idx = i + 1;
     if (rating >= idx) return "full" as const;
@@ -419,14 +418,12 @@ function ApricotRating({ rating }: { rating: number }) {
 }
 
 function ApricotIcon({ state }: { state: "full" | "half" | "empty" }) {
-  // Un petit abricot stylisé (peach-like) : outline + remplissage accent
   const size = 18;
   const accent = "var(--accent)";
   const stroke = "var(--accent)";
   const emptyFill = "transparent";
 
   if (state === "half") {
-    // base vide + calque rempli masqué à 50%
     return (
       <span className="relative inline-block" style={{ width: size, height: size }}>
         <svg width={size} height={size} viewBox="0 0 24 24" className="absolute left-0 top-0">
