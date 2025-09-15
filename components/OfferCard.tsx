@@ -74,68 +74,65 @@ export default function OfferCard({ offer, index, originSlug }: OfferCardProps) 
 
   return (
     <article
-      className="group flex flex-col overflow-hidden rounded-3xl bg-white shadow-md ring-1 transition hover:shadow-lg"
-      style={{ ringColor: 'var(--bg-light)' as unknown as string, boxShadow: '0 8px 20px rgba(0,0,0,0.06)' }}
+      className="flex flex-col rounded-3xl bg-white p-5 shadow-md transition hover:shadow-lg"
+      style={{ border: '1px solid var(--bg-light)' }}
     >
-      {/* Frame image avec bordure blanche bien visible */}
-      <div className="p-3">
-        <div className="relative rounded-2xl bg-[var(--bg-main)] p-2">
-          <div className="overflow-hidden rounded-xl border-4 border-white shadow-sm">
-            <Image
-              src={img || '/images/product-placeholder.jpg'}
-              alt={`${title} — photo produit`}
-              width={800}
-              height={800}
-              className="aspect-square w-full object-cover transition duration-300 group-hover:scale-[1.01]"
-              priority={false}
-            />
-          </div>
-        </div>
+      {/* Image (look simple & propre, arrondi) */}
+      <div className="relative overflow-hidden rounded-2xl">
+        <Image
+          src={img || '/images/product-placeholder.jpg'}
+          alt={`${title} — photo produit`}
+          width={800}
+          height={800}
+          className="aspect-square w-full object-cover"
+          priority={false}
+        />
       </div>
 
-      <div className="flex flex-1 flex-col px-5 pb-5">
+      <div className="mt-4 flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-lg font-semibold leading-snug" style={{ color: 'var(--accent)' }}>
+          <h3 className="text-lg font-semibold" style={{ color: 'var(--accent)' }}>
             {title}
           </h3>
           <p className="mt-1 text-sm opacity-80" style={{ color: 'var(--text)' }}>
             {brand || 'Soin corps • 200 ml'}
           </p>
         </div>
+        {/* aucun badge */}
+      </div>
 
-        <div className="mt-4 flex items-center justify-between">
-          <span className="text-lg font-semibold" style={{ color: 'var(--text)' }}>
-            {price}
-          </span>
-          <div className="flex items-center gap-2">
+      <div className="mt-4 flex items-center justify-between">
+        <span className="text-lg font-semibold" style={{ color: 'var(--text)' }}>
+          {price}
+        </span>
+        <div className="flex items-center gap-2">
+          <Link
+            href={detailsHref}
+            className="rounded-2xl border px-4 py-2 text-sm transition hover:opacity-90"
+            style={{ borderColor: 'var(--accent)', color: 'var(--accent)', backgroundColor: 'transparent' }}
+          >
+            Détails
+          </Link>
+          {affiliate ? (
             <Link
-              href={detailsHref}
-              className="rounded-2xl border px-4 py-2 text-sm transition hover:opacity-90"
-              style={{ borderColor: 'var(--accent)', color: 'var(--accent)', backgroundColor: 'transparent' }}
+              href={affiliate}
+              target="_blank"
+              rel="nofollow sponsored noopener"
+              onClick={trackClick}
+              className="rounded-2xl px-4 py-2 text-sm text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
+              style={{ backgroundColor: 'var(--accent)' }}
             >
-              Détails
+              Choisir
             </Link>
-            {affiliate ? (
-              <Link
-                href={affiliate}
-                target="_blank"
-                rel="nofollow sponsored noopener"
-                onClick={trackClick}
-                className="rounded-2xl px-4 py-2 text-sm text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
-                style={{ backgroundColor: 'var(--accent)' }}
-              >
-                Choisir
-              </Link>
-            ) : (
-              <Link
-                href="/offers"
-                className="rounded-2xl px-4 py-2 text-sm text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
-                style={{ backgroundColor: 'var(--accent)' }}
-              >
-                Choisir
-              </Link>
-            )}
-          </div>
+          ) : (
+            <Link
+              href="/offers"
+              className="rounded-2xl px-4 py-2 text-sm text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
+              style={{ backgroundColor: 'var(--accent)' }}
+            >
+              Choisir
+            </Link>
+          )}
         </div>
       </div>
     </article>
