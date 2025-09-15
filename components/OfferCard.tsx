@@ -32,6 +32,9 @@ export type CardOffer = {
   url?: string;
 };
 
+/** Compatibilité avec `import OfferCard, { type Offer } from '@/components/OfferCard'` */
+export type Offer = CardOffer;
+
 export type OfferCardProps = {
   offer: CardOffer;
   index: number;
