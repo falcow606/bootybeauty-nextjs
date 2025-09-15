@@ -4,56 +4,64 @@ import * as React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 
-export type CardOffer = {
+/** Type large qui couvre tes différentes sources (sheet, n8n, mapping), y compris `null` */
+export type AnyOffer = {
   // Identifiants
-  id?: string | number;
-  productId?: string | number;
-  slug?: string;
+  id?: string | number | null;
+  productId?: string | number | null;
+  slug?: string | null;
 
   // Libellés & visuels
-  title?: string;
-  name?: string;
-  brand?: string;
-  marchand?: string;
-  merchant?: string;
-  imageUrl?: string;
-  image?: string;
-  image_url?: string;
-  Image_URL?: string;
+  title?: string | null;
+  name?: string | null;
+  brand?: string | null;
+  marchand?: string | null;
+  merchant?: string | null;
+  imageUrl?: string | null;
+  image?: string | null;
+  image_url?: string | null;
+  Image_URL?: string | null;
 
   // Prix
-  price?: string | number;
-  priceEur?: string | number;
-  ['Prix (€)']?: string | number;
+  price?: string | number | null;
+  priceEur?: string | number | null;
+  ['Prix (€)']?: string | number | null;
 
   // Liens
-  affiliateUrl?: string;
-  finalUrl?: string;
-  url?: string;
+  affiliateUrl?: string | null;
+  finalUrl?: string | null;
+  url?: string | null;
 
-  // Statut HTTP (pour filtrage côté fiche produit)
-  httpStatus?: number | string;
+  // Statut HTTP (pour filtres côté fiche produit)
+  httpStatus?: number | string | null;
 };
 
-/** Compat pour `import OfferCard, { type Offer } from '@/components/OfferCard'` */
-export type Offer = CardOffer;
+/** Compat noms de types ailleurs dans le projet */
+export type CardOffer = AnyOffer;
+export type Offer = AnyOffer;
 
 export type OfferCardProps = {
-  offer: CardOffer;
+  offer: AnyOffer;
   index: number;
-  /** slug de la page d'origine (ex: fiche produit courante) */
+  /** slug de la page d'origine (ex: fiche produit courante), utilisé pour le tracking */
   originSlug?: string;
 };
 
 export default function OfferCard({ offer, index, originSlug }: OfferCardProps) {
-  const title = offer.title ?? offer.name ?? 'Produit';
-  const brand = offer.brand ?? offer.merchant ?? offer.marchand ?? '';
-  const img = offer.imageUrl ?? offer.Image_URL ?? offer.image_url ?? offer.image ?? '';
-  const priceRaw = offer.price ?? offer.priceEur ?? offer['Prix (€)'] ?? '';
-  const price = typeof priceRaw === 'number' ? `${priceRaw.toFixed(2)}€` : (priceRaw || '');
+  const title =
+    offer.title ?? offer.name ?? 'Produit';
+  const brand =
+    offer.brand ?? offer.merchant ?? offer.marchand ?? '';
+  const img =
+    offer.imageUrl ?? offer.Image_URL ?? offer.image_url ?? offer.image ?? '';
+  const priceRaw =
+    offer.price ?? offer.priceEur ?? offer['Prix (€)'] ?? '';
+  const price =
+    typeof priceRaw === 'number' ? `${priceRaw.toFixed(2)}€` : (priceRaw || '');
 
   const detailsHref = offer.slug ? `/p/${offer.slug}` : '/offers';
-  const affiliate = offer.affiliateUrl ?? offer.finalUrl ?? offer.url ?? '';
+  const affiliate =
+    offer.affiliateUrl ?? offer.finalUrl ?? offer.url ?? '';
 
   async function trackClick() {
     try {
