@@ -92,7 +92,7 @@ async function getFeaturedOffers(): Promise<FeaturedProduct[]> {
   return filtered.slice(0, 3).map(mapOffer);
 }
 
-// Typage propre pour les variables CSS (pas de `as any`)
+// Typage propre pour les variables CSS
 type CSSVars = React.CSSProperties & {
   ["--accent"]: string;
   ["--secondary"]: string;
@@ -177,7 +177,7 @@ export default async function HomePage() {
               key={p.id || p.slug || p.title || String(i)}
               title={p.title}
               price={p.price || ""}
-              tag={featured?.length ? "À l'affiche" : undefined}  {/* plus de “Best-seller” */}
+              tag={featured?.length ? "À l'affiche" : undefined}
               imageSrc={p.imageUrl}
               brand={p.brand}
               href={p.affiliateUrl}
