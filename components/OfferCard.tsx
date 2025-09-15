@@ -1,94 +1,135 @@
-// components/OfferCard.tsx
+'use client';
+
+import * as React from 'react';
 import Image from 'next/image';
-import AffiliateLink from '@/components/AffiliateLink';
+import Link from 'next/link';
 
-export type Offer = {
-  productId: string | number;
-  merchant: string | null;
-  price: string | number | null;
-  availability: string | null;
-  affiliateUrl: string | null;
-  commissionPct: string | number | null;
-  httpStatus: number | string | null;
-  lastChecked: string | null;
+export type CardOffer = {
+  // Identifiants
+  id?: string;
+  productId?: string;
+  slug?: string;
 
-  // champs enrichis par l’API n8n
-  imageUrl?: string | null;
-  title?: string | null;
-  brand?: string | null;
+  // Libellés & visuels
+  title?: string;
+  name?: string;
+  brand?: string;
+  marchand?: string;
+  merchant?: string;
+  imageUrl?: string;
+  image?: string;
+  image_url?: string;
+  Image_URL?: string;
+
+  // Prix
+  price?: string | number;
+  priceEur?: string | number;
+  ['Prix (€)']?: string | number;
+
+  // Liens
+  affiliateUrl?: string;
+  finalUrl?: string;
+  url?: string;
 };
 
-function asNumber(value: string | number | null): number | null {
-  if (value == null) return null;
-  if (typeof value === 'number') return Number.isFinite(value) && value > 0 ? value : null;
-  const n = Number(String(value).replace(',', '.').trim());
-  return Number.isFinite(n) && n > 0 ? n : null; // 0 => null
-}
+export type OfferCardProps = {
+  offer: CardOffer;
+  index: number;
+  /** slug de la page d'origine (ex: fiche produit courante) */
+  originSlug?: string;
+};
 
-export default function OfferCard({ offer, index }: { offer: Offer; index: number }) {
-  const priceNum = asNumber(offer.price);
-  const ts = offer.lastChecked ? new Date(offer.lastChecked) : null;
+export default function OfferCard({ offer, index, originSlug }: OfferCardProps) {
+  const title =
+    offer.title ?? offer.name ?? 'Produit';
+  const brand =
+    offer.brand ?? offer.merchant ?? offer.marchand ?? '';
+  const img =
+    offer.imageUrl ?? offer.Image_URL ?? offer.image_url ?? offer.image ?? '';
+  const priceRaw =
+    offer.price ?? offer.priceEur ?? offer['Prix (€)'] ?? '';
+  const price =
+    typeof priceRaw === 'number' ? `${priceRaw.toFixed(2)}€` : (priceRaw || '');
 
-  const displayTitle =
-    (offer.title && offer.title.trim()) ||
-    (offer.brand && offer.brand.trim()) ||
-    (offer.merchant ?? '') ||
-    `#${offer.productId}`;
+  const detailsHref = offer.slug ? `/p/${offer.slug}` : '/offers';
+  const affiliate =
+    offer.affiliateUrl ?? offer.finalUrl ?? offer.url ?? '';
 
-  const imgSrc = offer.imageUrl && offer.imageUrl.trim().length > 0 ? offer.imageUrl : null;
+  async function trackClick() {
+    try {
+      await fetch('/api/track-click', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          productId: offer.productId ?? offer.id ?? title,
+          index,
+          originSlug,
+          target: affiliate,
+        }),
+      });
+    } catch {
+      /* no-op */
+    }
+  }
 
   return (
-    <article className="flex items-start gap-4 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-      <div className="relative h-28 w-28 overflow-hidden rounded-xl bg-neutral-100">
-        {imgSrc ? (
-          <Image
-            src={imgSrc}
-            alt={displayTitle}
-            fill
-            sizes="112px"
-            className="object-cover"
-            priority={index < 2}
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-xs text-neutral-400">
-            # {String(offer.productId)}
-          </div>
-        )}
+    <article className="flex flex-col rounded-3xl bg-white p-5 shadow-md">
+      <div className="relative">
+        <Image
+          src={img || '/images/product-placeholder.jpg'}
+          alt={`${title} — photo produit`}
+          width={600}
+          height={600}
+          className="aspect-square w-full rounded-2xl object-cover"
+        />
       </div>
 
-      <div className="min-w-0 flex-1">
-        <h3 className="truncate text-lg font-semibold">{displayTitle}</h3>
-
-        <div className="mt-1 text-sm text-neutral-500">
-          {offer.merchant && <span className="mr-2">{offer.merchant}</span>}
-          {priceNum != null ? (
-            <span className="font-medium text-neutral-900">
-              — Prix estimé : {priceNum.toFixed(2)} €
-            </span>
-          ) : (
-            <span className="text-neutral-500">— Prix non renseigné</span>
-          )}
+      <div className="mt-4 flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-xl font-semibold" style={{ color: 'var(--accent)' }}>
+            {title}
+          </h3>
+          <p className="text-sm opacity-80" style={{ color: 'var(--text)' }}>
+            {brand || 'Soin corps • 200 ml'}
+          </p>
         </div>
+        <span className="inline-block rounded-full border px-3 py-1 text-sm" style={{ borderColor: 'var(--bg-light)' }}>
+          Recommandé
+        </span>
+      </div>
 
-        <div className="mt-1 text-xs text-neutral-400">
-          {ts ? <>Lien vérifié · {ts.toLocaleDateString()} {ts.toLocaleTimeString()}</> : 'Lien non vérifié'}
-        </div>
+      <div className="mt-4 flex items-center justify-between">
+        <span className="text-xl font-semibold" style={{ color: 'var(--text)' }}>
+          {price}
+        </span>
+        <div className="flex items-center gap-2">
+          <Link
+            href={detailsHref}
+            className="rounded-2xl border px-5 py-3 transition hover:opacity-90"
+            style={{ borderColor: 'var(--accent)', color: 'var(--accent)', backgroundColor: 'transparent' }}
+          >
+            Détails
+          </Link>
 
-        <div className="mt-3">
-          {offer.affiliateUrl ? (
-            <AffiliateLink
-              href={offer.affiliateUrl}
-              className="inline-flex items-center rounded-xl bg-black px-4 py-2 text-white hover:opacity-90"
+          {affiliate ? (
+            <Link
+              href={affiliate}
+              target="_blank"
+              rel="nofollow sponsored noopener"
+              onClick={trackClick}
+              className="rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
+              style={{ backgroundColor: 'var(--accent)' }}
             >
-              Voir l’offre
-            </AffiliateLink>
+              Choisir
+            </Link>
           ) : (
-            <button
-              disabled
-              className="inline-flex cursor-not-allowed items-center rounded-xl bg-neutral-200 px-4 py-2 text-neutral-500"
+            <Link
+              href="/offers"
+              className="rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
+              style={{ backgroundColor: 'var(--accent)' }}
             >
-              Indisponible
-            </button>
+              Choisir
+            </Link>
           )}
         </div>
       </div>
