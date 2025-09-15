@@ -45,6 +45,17 @@ export type OfferCardProps = {
   originSlug?: string;
 };
 
+/** Slugify sûr (enlève accents, espaces → tirets, minuscules) */
+function slugify(input: string): string {
+  const s = input
+    .normalize('NFD')                   // décompose accents
+    .replace(/[\u0300-\u036f]/g, '')   // retire diacritiques
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')       // remplace blocs non alphanum par -
+    .replace(/^-+|-+$/g, '');          // trim -
+  return s || 'produit';
+}
+
 export default function OfferCard({ offer, index, originSlug }: OfferCardProps) {
   const title = offer.title ?? offer.name ?? 'Produit';
   const brand = offer.brand ?? offer.merchant ?? offer.marchand ?? '';
@@ -52,7 +63,11 @@ export default function OfferCard({ offer, index, originSlug }: OfferCardProps) 
   const priceRaw = offer.price ?? offer.priceEur ?? offer['Prix (€)'] ?? '';
   const price = typeof priceRaw === 'number' ? `${priceRaw.toFixed(2)}€` : (priceRaw || '');
 
-  const detailsHref = offer.slug ? `/p/${offer.slug}` : '/offers';
+  // Lien fiche produit : slug direct si dispo, sinon slug créé depuis le titre
+  const rawSlug = (offer.slug ?? '').trim();
+  const computedSlug = rawSlug || (title !== 'Produit' ? slugify(title) : '');
+  const detailsHref = computedSlug ? `/p/${computedSlug}` : '/offers';
+
   const affiliate = offer.affiliateUrl ?? offer.finalUrl ?? offer.url ?? '';
 
   async function trackClick() {
