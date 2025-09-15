@@ -30,9 +30,12 @@ export type CardOffer = {
   affiliateUrl?: string;
   finalUrl?: string;
   url?: string;
+
+  // Statut HTTP (pour filtrage côté fiche produit)
+  httpStatus?: number | string;
 };
 
-/** Compatibilité avec `import OfferCard, { type Offer } from '@/components/OfferCard'` */
+/** Compat pour `import OfferCard, { type Offer } from '@/components/OfferCard'` */
 export type Offer = CardOffer;
 
 export type OfferCardProps = {
@@ -43,20 +46,14 @@ export type OfferCardProps = {
 };
 
 export default function OfferCard({ offer, index, originSlug }: OfferCardProps) {
-  const title =
-    offer.title ?? offer.name ?? 'Produit';
-  const brand =
-    offer.brand ?? offer.merchant ?? offer.marchand ?? '';
-  const img =
-    offer.imageUrl ?? offer.Image_URL ?? offer.image_url ?? offer.image ?? '';
-  const priceRaw =
-    offer.price ?? offer.priceEur ?? offer['Prix (€)'] ?? '';
-  const price =
-    typeof priceRaw === 'number' ? `${priceRaw.toFixed(2)}€` : (priceRaw || '');
+  const title = offer.title ?? offer.name ?? 'Produit';
+  const brand = offer.brand ?? offer.merchant ?? offer.marchand ?? '';
+  const img = offer.imageUrl ?? offer.Image_URL ?? offer.image_url ?? offer.image ?? '';
+  const priceRaw = offer.price ?? offer.priceEur ?? offer['Prix (€)'] ?? '';
+  const price = typeof priceRaw === 'number' ? `${priceRaw.toFixed(2)}€` : (priceRaw || '');
 
   const detailsHref = offer.slug ? `/p/${offer.slug}` : '/offers';
-  const affiliate =
-    offer.affiliateUrl ?? offer.finalUrl ?? offer.url ?? '';
+  const affiliate = offer.affiliateUrl ?? offer.finalUrl ?? offer.url ?? '';
 
   async function trackClick() {
     try {
