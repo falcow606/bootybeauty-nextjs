@@ -107,7 +107,6 @@ function mapOffer(row: UnknownRecord): Offer {
     ]),
     price: getStr(row, ["Prix (€)","Prix€","Prix","Price","price"]),
     affiliateUrl: getStr(row, [
-      // ⬇️ ton cas “Affiliate_URL” est bien couvert
       "affiliateUrl","Affiliate_URL","Affiliate URL","Affiliate Url","Affiliate Link","Affiliate",
       "finalUrl","FinalURL","Final URL",
       "Url","URL","url","link",
@@ -188,9 +187,9 @@ async function getAllContent(): Promise<ProductContent[]> {
 }
 
 /* ---------------- helpers page ---------------- */
-function displayPrice(p?: string): string {
-  if (!p) return "";
-  const s = p.trim();
+function displayPrice(p?: string | number): string {
+  if (p == null) return "";
+  const s = typeof p === "number" ? p.toString() : p.trim();
   return /€/.test(s) ? s : `${s} €`;
 }
 function pickAffiliate(o?: Offer): string {
@@ -237,11 +236,10 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     (offer?.title ? contents.find((c) => c.title && slugify(c.title) === slugify(offer.title!)) : undefined);
 
   const title = content?.title || offer?.title || slug;
-  // ⚠️ on n’utilise PAS brand ici pour éviter le doublon — on l’affiche sous la note
-  const subtitle = content?.subtitle || "";
+  const subtitle = content?.subtitle || ""; // marque affichée sous la note
   const brand = offer?.brand;
   const heroImg = content?.heroImage || offer?.imageUrl || "/images/product-placeholder.jpg";
-  const price = displayPrice(offer?.price || "");
+  const price = displayPrice(offer?.price ?? "");
   const affiliate = pickAffiliate(offer);
   const rating = content?.rating;
 
