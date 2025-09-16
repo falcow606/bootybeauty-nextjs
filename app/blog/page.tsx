@@ -9,6 +9,7 @@ const bodoni = Bodoni_Moda({ subsets: ["latin"], style: ["normal"], weight: ["40
 const nunito = Nunito_Sans({ subsets: ["latin"], weight: ["300","400","600","700"] });
 
 type UnknownRecord = Record<string, unknown>;
+
 type BlogPost = {
   slug: string;
   title: string;
@@ -30,7 +31,15 @@ function truthy(v: unknown): boolean {
   return ["oui","yes","true","1","y","ok","published"].includes(s);
 }
 function normStr(v: unknown): string { return v == null ? "" : typeof v === "string" ? v : String(v); }
-function getVal(obj: UnknownRecord, keys: string[]): unknown { for (const k of keys) if (k in obj) return (obj as any)[k]; return undefined; }
+
+/** Renvoie la première valeur existante pour les clés données (sans `any`). */
+function getVal(obj: UnknownRecord, keys: string[]): unknown {
+  const rec = obj as Record<string, unknown>;
+  for (const k of keys) {
+    if (Object.prototype.hasOwnProperty.call(rec, k)) return rec[k];
+  }
+  return undefined;
+}
 function getStr(obj: UnknownRecord, keys: string[]): string | undefined {
   const v = getVal(obj, keys);
   if (v == null) return undefined;
@@ -43,17 +52,25 @@ function slugify(input: string): string {
     .replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"");
   return s || "article";
 }
+
+/** Cherche un tableau “logique” dans un JSON (sans `any`). */
 function firstArray(json: unknown): UnknownRecord[] {
   if (Array.isArray(json)) return json as UnknownRecord[];
   if (json && typeof json === "object") {
-    const obj = json as UnknownRecord;
+    const obj = json as Record<string, unknown>;
     const keys = ["items","data","result","rows","records","list","values","results"];
-    for (const k of keys) { const v = (obj as any)[k]; if (Array.isArray(v)) return v as UnknownRecord[]; }
+    for (const k of keys) {
+      const v = obj[k];
+      if (Array.isArray(v)) return v as UnknownRecord[];
+    }
     for (const v of Object.values(obj)) {
       if (Array.isArray(v)) return v as UnknownRecord[];
       if (v && typeof v === "object") {
-        const sub = v as UnknownRecord;
-        for (const k of keys) { const vv = (sub as any)[k]; if (Array.isArray(vv)) return vv as UnknownRecord[]; }
+        const sub = v as Record<string, unknown>;
+        for (const k of keys) {
+          const vv = sub[k];
+          if (Array.isArray(vv)) return vv as UnknownRecord[];
+        }
       }
     }
   }
@@ -75,8 +92,11 @@ function parseCSV(text: string): UnknownRecord[] {
     const delim = guessDelimiter(text.slice(0, firstNL));
     const rows:string[][]=[], clean=(s:string)=>s.replace(/^\uFEFF/,"").replace(/\u00A0/g," ").replace(/\s+/g," ").trim();
     let row:string[]=[]; let field=""; let inQ=false;
-    const pushField=()=>{ row.push(field); field=""; };
-    const pushRow=()=>{ if(row.length>1||(row.length===1&&row[0].trim()!=="")) rows.push(row); row=[]; };
+    const pushField=():void=>{ row.push(field); field=""; };
+    const pushRow=():void=>{
+      if(row.length>1||(row.length===1&&row[0].trim()!=="")) rows.push(row);
+      row=[];
+    };
     for(let i=0;i<text.length;i++){
       const ch=text[i];
       if(ch==='"'){ if(inQ && text[i+1]==='"'){ field+='"'; i++; } else inQ=!inQ; continue; }
@@ -87,11 +107,13 @@ function parseCSV(text: string): UnknownRecord[] {
     pushField(); pushRow();
     if(!rows.length) return [];
     const headers=rows[0].map(clean); const out:UnknownRecord[]=[];
-    for(let r=1;r<rows.length;r++){ const rec:UnknownRecord={}; const cols=rows[r];
-      headers.forEach((h,idx)=>{ rec[h]=(cols[idx]??"").replace(/\r$/,""); }); out.push(rec); }
+    for(let r=1;r<rows.length;r++){
+      const rec:UnknownRecord={}; const cols=rows[r];
+      headers.forEach((h,idx)=>{ rec[h]=(cols[idx]??"").replace(/\r$/,""); });
+      out.push(rec);
+    }
     return out;
-  } catch (e) {
-    console.error("CSV parse error:", e);
+  } catch {
     return [];
   }
 }
@@ -120,29 +142,26 @@ async function fetchRows(url?: string, needsKey = true): Promise<UnknownRecord[]
   if (!url) return [];
   try {
     const init: RequestInit & { next?: { revalidate?: number } } = { ...baseInit };
-    if (needsKey && process.env.N8N_OFFERS_KEY) init.headers = { "x-api-key": String(process.env.N8N_OFFERS_KEY) };
-    const res = await fetch(url, init);
-    if (!res.ok) {
-      console.error("Blog fetch not ok:", res.status, res.statusText);
-      return [];
+    if (needsKey && process.env.N8N_OFFERS_KEY) {
+      init.headers = { "x-api-key": String(process.env.N8N_OFFERS_KEY) };
     }
+    const res = await fetch(url, init);
+    if (!res.ok) return [];
     const ct = normStr(res.headers.get("content-type")).toLowerCase();
     if (ct.includes("application/json") || ct.includes("text/json")) {
-      const j = await res.json().catch(()=>null);
-      return j ? firstArray(j as unknown) : [];
+      const j = await res.json().catch<unknown>(()=>null);
+      return j ? firstArray(j) : [];
     }
     const text = await res.text();
     const tt = text.trim();
     if (tt.startsWith("{") || tt.startsWith("[")) {
-      try { return firstArray(JSON.parse(tt) as unknown); } catch { /* fallthrough to CSV */ }
+      try { return firstArray(JSON.parse(tt) as unknown); } catch { /* continue to CSV */ }
     }
     return parseCSV(text);
-  } catch (e) {
-    console.error("Blog fetch error:", e);
+  } catch {
     return [];
   }
 }
-
 async function getAllPosts(): Promise<BlogPost[]> {
   const sources = [
     { url: process.env.N8N_BLOG_URL, needsKey: true },
@@ -152,16 +171,12 @@ async function getAllPosts(): Promise<BlogPost[]> {
   for (const s of sources) {
     const rows = await fetchRows(s.url, s.needsKey);
     if (rows.length) {
-      try {
-        return rows.map(mapPost).filter(Boolean).map(p=>p!) as BlogPost[];
-      } catch (e) {
-        console.error("Blog map error:", e);
-      }
+      const mapped = rows.map(mapPost).filter((x): x is BlogPost => x !== null);
+      if (mapped.length) return mapped;
     }
   }
   return [];
 }
-
 function fmtDateFr(iso?: string): string | undefined {
   if (!iso) return undefined;
   const d = new Date(iso);
