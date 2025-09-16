@@ -59,36 +59,91 @@ function firstArray(json: unknown): UnknownRecord[] {
   }
   return [];
 }
-function parseCSV(text: string): UnknownRecord[] {
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  if (!lines.length) return [];
-  const head = lines[0];
-  const comma = (head.match(/,/g) || []).length;
-  const semi = (head.match(/;/g) || []).length;
-  const delim = semi > comma ? ";" : ",";
-  const split = (line: string): string[] => {
-    const out: string[] = [];
-    let cur = "", q = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (q && line[i+1] === '"') { cur += '"'; i++; }
-        else q = !q;
-      } else if (ch === delim && !q) { out.push(cur); cur = ""; }
-      else cur += ch;
+
+/** Délimiteur deviné sur la 1ère ligne (hors guillemets) */
+function guessDelimiter(header: string): "," | ";" {
+  let inQuotes = false;
+  let comma = 0, semi = 0;
+  for (let i = 0; i < header.length; i++) {
+    const ch = header[i];
+    if (ch === '"') {
+      if (inQuotes && header[i + 1] === '"') { i++; continue; }
+      inQuotes = !inQuotes;
+    } else if (!inQuotes) {
+      if (ch === ",") comma++;
+      else if (ch === ";") semi++;
     }
-    out.push(cur);
-    return out.map((c) => c.replace(/^"(.*)"$/, "$1"));
-  };
-  const headers = split(lines[0]).map((h) => h.trim());
-  const rows: UnknownRecord[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cols = split(lines[i]);
-    const row: UnknownRecord = {};
-    headers.forEach((h, j) => (row[h] = cols[j] ?? ""));
-    rows.push(row);
   }
-  return rows;
+  return semi > comma ? ";" : ",";
+}
+
+/** CSV robuste : gère guillemets + retours à la ligne en cellule */
+function parseCSV(text: string): UnknownRecord[] {
+  if (!text.trim()) return [];
+
+  // Détecter le délimiteur sur la première “vraie” ligne
+  const firstNL = text.indexOf("\n") === -1 ? text.length : text.indexOf("\n");
+  const headerSlice = text.slice(0, firstNL);
+  const delim = guessDelimiter(headerSlice);
+
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+
+  const pushField = () => { row.push(field); field = ""; };
+  const pushRow = () => {
+    // ignore lignes vides
+    if (row.length > 1 || (row.length === 1 && row[0].trim() !== "")) rows.push(row);
+    row = [];
+  };
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+
+    if (ch === '"') {
+      if (inQuotes && text[i + 1] === '"') { field += '"'; i++; }
+      else { inQuotes = !inQuotes; }
+      continue;
+    }
+
+    if (!inQuotes && ch === delim) {
+      pushField();
+      continue;
+    }
+
+    if (!inQuotes && (ch === "\n" || ch === "\r")) {
+      // Gérer \r\n
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      pushField();
+      pushRow();
+      continue;
+    }
+
+    field += ch;
+  }
+  // dernier champ/ligne
+  pushField();
+  pushRow();
+
+  if (!rows.length) return [];
+
+  // Nettoyage des entêtes
+  const clean = (s: string) =>
+    s.replace(/^\uFEFF/, "") // BOM
+      .replace(/\u00A0/g, " ") // NBSP
+      .replace(/\s+/g, " ")
+      .trim();
+
+  const headers = rows[0].map(clean);
+  const out: UnknownRecord[] = [];
+  for (let r = 1; r < rows.length; r++) {
+    const rec: UnknownRecord = {};
+    const cols = rows[r];
+    headers.forEach((h, idx) => { rec[h] = (cols[idx] ?? "").replace(/\r$/, ""); });
+    out.push(rec);
+  }
+  return out;
 }
 function splitList(raw?: string): string[] {
   if (!raw) return [];
