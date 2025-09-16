@@ -297,29 +297,18 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             </div>
           ) : null}
 
-          {/* CTA */}
+          {/* CTA — un seul bouton “Voir l’offre” */}
           <div className="mt-6 flex flex-wrap items-center gap-3">
             {affiliate ? (
-              <>
-                <Link
-                  href={affiliate}
-                  target="_blank"
-                  rel="nofollow sponsored noopener"
-                  className="rounded-2xl border px-5 py-3 transition hover:opacity-90"
-                  style={{ borderColor: "var(--accent)", color: "var(--accent)", backgroundColor: "transparent" }}
-                >
-                  Voir l’offre
-                </Link>
-                <Link
-                  href={affiliate}
-                  target="_blank"
-                  rel="nofollow sponsored noopener"
-                  className="rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
-                  style={{ backgroundColor: "var(--accent)" }}
-                >
-                  Choisir
-                </Link>
-              </>
+              <Link
+                href={affiliate}
+                target="_blank"
+                rel="nofollow sponsored noopener"
+                className="rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
+                style={{ backgroundColor: "var(--accent)" }}
+              >
+                Voir l’offre
+              </Link>
             ) : (
               <Link
                 href="/offers"
