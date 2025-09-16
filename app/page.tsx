@@ -9,7 +9,7 @@ import { Bodoni_Moda, Nunito_Sans } from "next/font/google";
 const bodoni = Bodoni_Moda({ subsets: ["latin"], style: ["normal"], weight: ["400", "600", "700"] });
 const nunito = Nunito_Sans({ subsets: ["latin"], weight: ["300", "400", "600", "700"] });
 
-// -------------------- Types & helpers (sans `any`) --------------------
+// -------------------- Types & helpers --------------------
 type UnknownRecord = Record<string, unknown>;
 
 type FeaturedProduct = {
@@ -22,6 +22,15 @@ type FeaturedProduct = {
   slug?: string;
 };
 
+function slugify(input: string): string {
+  const s = input
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return s || "produit";
+}
 function truthy(v: unknown): boolean {
   if (typeof v === "boolean") return v;
   if (typeof v === "number") return v > 0;
@@ -29,7 +38,6 @@ function truthy(v: unknown): boolean {
   const s = String(v).trim().toLowerCase();
   return ["oui", "yes", "true", "1", "y", "ok"].includes(s);
 }
-
 function getStr(obj: UnknownRecord, keys: string[]): string | undefined {
   for (const k of keys) {
     const v = obj[k];
@@ -38,7 +46,6 @@ function getStr(obj: UnknownRecord, keys: string[]): string | undefined {
   }
   return undefined;
 }
-
 function mapOffer(row: UnknownRecord): FeaturedProduct {
   return {
     id: getStr(row, ["Product_ID", "ID", "id"]),
@@ -58,7 +65,6 @@ async function getFeaturedOffers(): Promise<FeaturedProduct[]> {
   const headers: Record<string, string> = {};
   if (process.env.N8N_OFFERS_KEY) headers["x-api-key"] = String(process.env.N8N_OFFERS_KEY);
 
-  // Preview: pas de cache. Prod: revalidate 30 min.
   const fetchInit: RequestInit & { next?: { revalidate?: number } } =
     process.env.VERCEL_ENV === "preview" || process.env.NODE_ENV !== "production"
       ? { headers, cache: "no-store" }
@@ -90,7 +96,7 @@ async function getFeaturedOffers(): Promise<FeaturedProduct[]> {
   return filtered.slice(0, 3).map(mapOffer);
 }
 
-// Typage propre pour les variables CSS (pas de `as any`)
+// Typage propre pour les variables CSS
 type CSSVars = React.CSSProperties & {
   ["--accent"]: string;
   ["--secondary"]: string;
@@ -150,20 +156,25 @@ export default async function HomePage() {
             ? featured
             : [
                 { title: "Bom Dia Bright Cream", price: "", imageUrl: "/images/bom-dia-bright-cream.jpg", brand: "", affiliateUrl: "" },
-                { title: "Beauty Booty Whitening Brightening Lightening Cream", price: "", imageUrl: "/images/beauty-booty-whitening.jpg", brand: "", affiliateUrl: "" },
+                { title: "Beauty Booty Lightening Cream", price: "", imageUrl: "/images/beauty-booty-whitening.jpg", brand: "", affiliateUrl: "" },
                 { title: "Huile Corps Sublimatrice Body Sunshine", price: "", imageUrl: "/images/huile-corps-sunshine.jpg", brand: "", affiliateUrl: "" },
               ]
-          ).map((p, i) => (
-            <ProductCard
-              key={p.id || p.slug || p.title || String(i)}
-              title={p.title}
-              price={p.price || ""}
-              tag={featured?.length ? "À l'affiche" : undefined}
-              imageSrc={p.imageUrl}
-              brand={p.brand}
-              href={p.affiliateUrl}
-            />
-          ))}
+          ).map((p, i) => {
+            const detailsSlug = p.slug || (p.title ? slugify(p.title) : "");
+            const detailsHref = detailsSlug ? `/p/${detailsSlug}` : "/offers";
+            return (
+              <ProductCard
+                key={p.id || p.slug || p.title || String(i)}
+                title={p.title}
+                price={p.price || ""}
+                tag={featured?.length ? "À l'affiche" : undefined}
+                imageSrc={p.imageUrl}
+                brand={p.brand}
+                href={p.affiliateUrl}
+                detailsHref={detailsHref}
+              />
+            );
+          })}
         </section>
 
         {/* Bandeau confiance */}
@@ -179,7 +190,7 @@ export default async function HomePage() {
         </div>
       </main>
 
-      {/* FOOTER local (tu peux le migrer en global si tu veux) */}
+      {/* FOOTER local */}
       <footer className="mt-6">
         <div className="mx-auto max-w-6xl px-6 pb-16">
           <div className={`${nunito.className} rounded-3xl p-6`} style={{ backgroundColor: "var(--secondary)", color: "#333" }}>
@@ -196,7 +207,7 @@ export default async function HomePage() {
   );
 }
 
-// -------------------- UI primitives (sans `any`) --------------------
+// -------------------- UI primitives --------------------
 type ButtonLinkProps = {
   href?: string;
   target?: string;
@@ -206,43 +217,20 @@ type ButtonLinkProps = {
 function PrimaryButton({ children, href, target, rel, ...props }: React.PropsWithChildren<ButtonLinkProps>) {
   const className = `${nunito.className} rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60`;
   const style = { backgroundColor: "var(--accent)" } as React.CSSProperties;
-  if (href) {
-    return (
-      <Link href={href} className={className} style={style} target={target} rel={rel}>
-        {children}
-      </Link>
-    );
-  }
-  return (
-    <button className={className} style={style} {...props}>
-      {children}
-    </button>
-  );
+  if (href) return <Link href={href} className={className} style={style} target={target} rel={rel}>{children}</Link>;
+  return <button className={className} style={style} {...props}>{children}</button>;
 }
 
 function SecondaryButton({ children, href, target, rel, ...props }: React.PropsWithChildren<ButtonLinkProps>) {
   const className = `${nunito.className} rounded-2xl border px-5 py-3 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60`;
   const style = { borderColor: "var(--accent)", color: "var(--accent)", backgroundColor: "transparent" } as React.CSSProperties;
-  if (href) {
-    return (
-      <Link href={href} className={className} style={style} target={target} rel={rel}>
-        {children}
-      </Link>
-    );
-  }
-  return (
-    <button className={className} style={style} {...props}>
-      {children}
-    </button>
-  );
+  if (href) return <Link href={href} className={className} style={style} target={target} rel={rel}>{children}</Link>;
+  return <button className={className} style={style} {...props}>{children}</button>;
 }
 
 function Badge({ children }: React.PropsWithChildren) {
   return (
-    <span
-      className={`${nunito.className} inline-block rounded-full px-3 py-1 text-sm`}
-      style={{ backgroundColor: "var(--bg-main)", border: "1px solid var(--bg-light)", color: "var(--text)" }}
-    >
+    <span className={`${nunito.className} inline-block rounded-full px-3 py-1 text-sm`} style={{ backgroundColor: "var(--bg-main)", border: "1px solid var(--bg-light)", color: "var(--text)" }}>
       {children}
     </span>
   );
@@ -255,6 +243,7 @@ function ProductCard({
   imageSrc = "/images/product-placeholder.jpg",
   brand,
   href,
+  detailsHref,
 }: {
   title: string;
   price?: string;
@@ -262,6 +251,7 @@ function ProductCard({
   imageSrc?: string;
   brand?: string;
   href?: string;
+  detailsHref?: string;
 }) {
   return (
     <article className="flex flex-col rounded-3xl bg-white p-5 shadow-md">
@@ -278,7 +268,7 @@ function ProductCard({
       <div className="mt-4 flex items-center justify-between">
         <span className={`${bodoni.className} text-xl`} style={{ color: "var(--text)" }}>{price}</span>
         <div className="flex items-center gap-2">
-          <SecondaryButton href="/offers">Détails</SecondaryButton>
+          <SecondaryButton href={detailsHref || "/offers"}>Détails</SecondaryButton>
           {href ? (
             <PrimaryButton href={href} target="_blank" rel="nofollow sponsored noopener">Choisir</PrimaryButton>
           ) : (

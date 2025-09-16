@@ -12,7 +12,16 @@ export const revalidate = 0;
 
 type UnknownRecord = Record<string, unknown>;
 
-/* ===================== utils safe ===================== */
+/* ---------------- utils ---------------- */
+function slugify(input: string): string {
+  const s = input
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return s || "produit";
+}
 function normStr(v: unknown): string {
   if (v == null) return "";
   return typeof v === "string" ? v : String(v);
@@ -93,10 +102,10 @@ function parseRating(raw?: string): number | undefined {
   const s = raw.replace(",", ".").trim();
   const n = Number.parseFloat(s);
   if (Number.isNaN(n)) return undefined;
-  return Math.min(5, Math.max(0, Math.round(n * 2) / 2)); // arrondi au 0,5
+  return Math.min(5, Math.max(0, Math.round(n * 2) / 2));
 }
 
-/* ===================== mapping OFFERS ===================== */
+/* ------------- mapping OFFERS ------------- */
 function mapOffer(row: UnknownRecord): Offer {
   return {
     id: getStr(row, ["Product_ID","product_id","productId","ID","id"]),
@@ -111,7 +120,7 @@ function mapOffer(row: UnknownRecord): Offer {
   };
 }
 
-/* ===================== mapping CONTENT ===================== */
+/* ------------- mapping CONTENT ------------- */
 type ProductContent = {
   slug: string;
   title?: string;
@@ -123,7 +132,7 @@ type ProductContent = {
   howTo?: string;
   ingredients?: string;
   faq?: { q: string; a: string }[];
-  rating?: number; // 0..5 (0,5 ok)
+  rating?: number;
 };
 function mapContent(row: UnknownRecord): ProductContent | null {
   const slug = getStr(row, ["Slug","slug"]);
@@ -137,15 +146,12 @@ function mapContent(row: UnknownRecord): ProductContent | null {
   const howTo = getStr(row, ["HowTo","How to","Utilisation","Mode_d_emploi","Conseils"]);
   const ingredients = getStr(row, ["Ingredients","Ingrédients","Key_Ingredients"]);
   const note = getStr(row, ["Note globale (sur 5)","Note","Rating","Score"]);
-
-  // FAQ Q/A paires
   const faq: { q: string; a: string }[] = [];
   for (let i = 1; i <= 6; i++) {
     const q = getStr(row, [`FAQ_Q${i}`, `FAQ${i}_Q`, `Question${i}`]);
     const a = getStr(row, [`FAQ_A${i}`, `FAQ${i}_A`, `Answer${i}`]);
     if (q && a) faq.push({ q, a });
   }
-
   return {
     slug,
     title: title || undefined,
@@ -161,7 +167,7 @@ function mapContent(row: UnknownRecord): ProductContent | null {
   };
 }
 
-/* ============== fetch data (multi-sources) ============== */
+/* ------------- fetch (multi-sources) ------------- */
 const baseInit: RequestInit & { next?: { revalidate?: number } } =
   process.env.VERCEL_ENV === "preview" || process.env.NODE_ENV !== "production"
     ? { cache: "no-store" }
@@ -203,38 +209,38 @@ async function getAllOffers(): Promise<Offer[]> {
   }
   return [];
 }
-
 async function getAllContent(): Promise<ProductContent[]> {
   const rows = await fetchRows(process.env.SHEETS_CONTENT_CSV, false);
-  const mapped = rows.map(mapContent).filter(Boolean) as ProductContent[];
-  return mapped;
+  return rows.map(mapContent).filter(Boolean) as ProductContent[];
 }
 
-/* ===================== SEO metadata ===================== */
+/* ------------- SEO ------------- */
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const [content, offers] = await Promise.all([getAllContent(), getAllOffers()]);
-  const c = content.find((x) => x.slug === slug);
-  const o = offers.find((x) => normStr(x.slug).toLowerCase() === slug.toLowerCase());
+  const c = content.find((x) => x.slug.toLowerCase() === slug.toLowerCase())
+    || content.find((x) => x.title && slugify(x.title) === slug);
+  const o = offers.find((x) => normStr(x.slug).toLowerCase() === slug.toLowerCase())
+    || offers.find((x) => x.title && slugify(x.title) === slug);
   const title = c?.title || o?.title || slug;
-  const desc =
-    c?.intro ||
-    `Test et avis — ${title}. Sélection Booty & Cutie : conseils, utilisation et meilleures offres.`;
+  const desc = c?.intro || `Test et avis — ${title}. Sélection Booty & Cutie : conseils, utilisation et meilleures offres.`;
   return { title: `${title} — Test & avis`, description: desc };
 }
 
-/* ============================== PAGE ============================== */
+/* ------------- PAGE ------------- */
 export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
 
   const [offers, contents] = await Promise.all([getAllOffers(), getAllContent()]);
   const offer =
     offers.find((o) => normStr(o.slug).toLowerCase() === slug.toLowerCase()) ||
-    offers.find((o) => normStr(o.title).toLowerCase() === slug.replace(/-/g, " ").toLowerCase());
+    offers.find((o) => o.title && slugify(o.title) === slug);
 
-  const content = contents.find((c) => c.slug.toLowerCase() === slug.toLowerCase());
+  const content =
+    contents.find((c) => c.slug.toLowerCase() === slug.toLowerCase()) ||
+    contents.find((c) => c.title && slugify(c.title) === slug) ||
+    (offer?.title ? contents.find((c) => c.title && slugify(c.title) === slugify(offer.title!)) : undefined);
 
-  // Données d’affichage
   const title = content?.title || offer?.title || slug;
   const subtitle = content?.subtitle || offer?.brand || "";
   const heroImg = content?.heroImage || offer?.imageUrl || "/images/product-placeholder.jpg";
@@ -242,7 +248,6 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const affiliate = offer?.affiliateUrl || "";
   const rating = content?.rating;
 
-  // Produits liés : même marque sinon aléatoire
   const sameBrand = offer?.brand
     ? offers.filter((o) => o.brand === offer.brand && normStr(o.slug).toLowerCase() !== slug.toLowerCase())
     : [];
@@ -313,7 +318,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           </div>
 
           {content?.intro ? (
-            <p className={`${nunito.className} mt-6 text-base leading-relaxed`} style={{ color: "var(--text)" }}>
+            <p className={`${nunito.className} mt-6 text-base leading-relaxed whitespace-pre-line`} style={{ color: "var(--text)" }}>
               {content.intro}
             </p>
           ) : null}
@@ -365,7 +370,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             {content.faq.map((f, i) => (
               <details key={`faq-${i}`} className="p-4">
                 <summary className="cursor-pointer font-semibold">{f.q}</summary>
-                <p className="mt-2 opacity-90">{f.a}</p>
+                <p className="mt-2 opacity-90 whitespace-pre-line">{f.a}</p>
               </details>
             ))}
           </div>
@@ -389,7 +394,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   );
 }
 
-/* ===================== UI helpers ===================== */
+/* ------------ UI helpers ------------ */
 function Card({ title, children }: React.PropsWithChildren<{ title: string }>) {
   return (
     <article className="rounded-3xl border p-5" style={{ borderColor: "var(--bg-light)", color: "var(--text)" }}>
@@ -399,7 +404,7 @@ function Card({ title, children }: React.PropsWithChildren<{ title: string }>) {
   );
 }
 
-/* ================ Apricot rating (0..5, demi-points) ================ */
+/* ---- Abricots (0..5, demi-points) ---- */
 function ApricotRating({ rating }: { rating: number }) {
   const items = Array.from({ length: 5 }, (_, i) => {
     const idx = i + 1;
@@ -407,7 +412,6 @@ function ApricotRating({ rating }: { rating: number }) {
     if (rating >= idx - 0.5) return "half" as const;
     return "empty" as const;
   });
-
   return (
     <div className="flex items-center gap-1">
       {items.map((state, i) => (
@@ -416,59 +420,31 @@ function ApricotRating({ rating }: { rating: number }) {
     </div>
   );
 }
-
 function ApricotIcon({ state }: { state: "full" | "half" | "empty" }) {
   const size = 18;
   const accent = "var(--accent)";
   const stroke = "var(--accent)";
   const emptyFill = "transparent";
-
   if (state === "half") {
     return (
       <span className="relative inline-block" style={{ width: size, height: size }}>
         <svg width={size} height={size} viewBox="0 0 24 24" className="absolute left-0 top-0">
-          <path
-            d="M12 6c1.8-2 4.6-2.3 6.5-.4 2 2 2 5.3 0 7.3l-4.2 4.2c-1.3 1.3-3.3 1.3-4.6 0L5.5 13c-2-2-2-5.3 0-7.3C7.4 3.8 10.2 4 12 6Z"
-            fill={emptyFill}
-            stroke={stroke}
-            strokeWidth="1.4"
-          />
-          <path
-            d="M14.8 4.5c1.1-.8 2.6-.9 3.7.2 1.4 1.4 1.4 3.7 0 5.1l-4.2 4.2c-.7.7-1.8.7-2.5 0L7.6 9c-1.4-1.4-1.4-3.7 0-5.1.6-.6 1.3-.9 2-.9"
-            fill="none"
-            stroke={stroke}
-            strokeWidth="1.4"
-          />
+          <path d="M12 6c1.8-2 4.6-2.3 6.5-.4 2 2 2 5.3 0 7.3l-4.2 4.2c-1.3 1.3-3.3 1.3-4.6 0L5.5 13c-2-2-2-5.3 0-7.3C7.4 3.8 10.2 4 12 6Z" fill={emptyFill} stroke={stroke} strokeWidth="1.4" />
+          <path d="M14.8 4.5c1.1-.8 2.6-.9 3.7.2 1.4 1.4 1.4 3.7 0 5.1l-4.2 4.2c-.7.7-1.8.7-2.5 0L7.6 9c-1.4-1.4-1.4-3.7 0-5.1.6-.6 1.3-.9 2-.9" fill="none" stroke={stroke} strokeWidth="1.4" />
         </svg>
         <span className="absolute left-0 top-0 h-full overflow-hidden" style={{ width: size / 2 }}>
           <svg width={size} height={size} viewBox="0 0 24 24">
-            <path
-              d="M12 6c1.8-2 4.6-2.3 6.5-.4 2 2 2 5.3 0 7.3l-4.2 4.2c-1.3 1.3-3.3 1.3-4.6 0L5.5 13c-2-2-2-5.3 0-7.3C7.4 3.8 10.2 4 12 6Z"
-              fill={accent}
-              stroke={stroke}
-              strokeWidth="1.4"
-            />
+            <path d="M12 6c1.8-2 4.6-2.3 6.5-.4 2 2 2 5.3 0 7.3l-4.2 4.2c-1.3 1.3-3.3 1.3-4.6 0L5.5 13c-2-2-2-5.3 0-7.3C7.4 3.8 10.2 4 12 6Z" fill={accent} stroke={stroke} strokeWidth="1.4" />
           </svg>
         </span>
       </span>
     );
   }
-
   const fill = state === "full" ? accent : emptyFill;
   return (
     <svg width={size} height={size} viewBox="0 0 24 24">
-      <path
-        d="M12 6c1.8-2 4.6-2.3 6.5-.4 2 2 2 5.3 0 7.3l-4.2 4.2c-1.3 1.3-3.3 1.3-4.6 0L5.5 13c-2-2-2-5.3 0-7.3C7.4 3.8 10.2 4 12 6Z"
-        fill={fill}
-        stroke={stroke}
-        strokeWidth="1.4"
-      />
-      <path
-        d="M14.8 4.5c1.1-.8 2.6-.9 3.7.2 1.4 1.4 1.4 3.7 0 5.1l-4.2 4.2c-.7.7-1.8.7-2.5 0L7.6 9c-1.4-1.4-1.4-3.7 0-5.1.6-.6 1.3-.9 2-.9"
-        fill="none"
-        stroke={stroke}
-        strokeWidth="1.4"
-      />
+      <path d="M12 6c1.8-2 4.6-2.3 6.5-.4 2 2 2 5.3 0 7.3l-4.2 4.2c-1.3 1.3-3.3 1.3-4.6 0L5.5 13c-2-2-2-5.3 0-7.3C7.4 3.8 10.2 4 12 6Z" fill={fill} stroke={stroke} strokeWidth="1.4" />
+      <path d="M14.8 4.5c1.1-.8 2.6-.9 3.7.2 1.4 1.4 1.4 3.7 0 5.1l-4.2 4.2c-.7.7-1.8.7-2.5 0L7.6 9c-1.4-1.4-1.4-3.7 0-5.1.6-.6 1.3-.9 2-.9" fill="none" stroke={stroke} strokeWidth="1.4" />
     </svg>
   );
 }
