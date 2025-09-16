@@ -14,16 +14,18 @@ type UnknownRecord = Record<string, unknown>;
 
 /* ---------------- utils ---------------- */
 function slugify(input: string): string {
-  const s = input.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const s = input.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   return s || "produit";
 }
 function normStr(v: unknown): string { return v == null ? "" : typeof v === "string" ? v : String(v); }
 function getVal(obj: UnknownRecord, keys: string[]): unknown { for (const k of keys) if (k in obj) return obj[k]; }
 function getStr(obj: UnknownRecord, keys: string[]): string | undefined {
-  const v = getVal(obj, keys); if (v == null) return undefined;
-  if (typeof v === "string") return v;
+  const v = getVal(obj, keys);
+  if (v == null) return undefined;
+  if (typeof v === "string") return v.trim();
   if (typeof v === "number" || typeof v === "boolean") return String(v);
+  return undefined;
 }
 function firstArray(json: unknown): UnknownRecord[] {
   if (Array.isArray(json)) return json as UnknownRecord[];
@@ -42,44 +44,53 @@ function firstArray(json: unknown): UnknownRecord[] {
   return [];
 }
 
-/* --- CSV robuste (guillemets + sauts de ligne en cellule) --- */
+/** Délimiteur d’après la 1ère ligne (hors guillemets). */
 function guessDelimiter(header: string): "," | ";" {
-  let inQ=false, c=0, s=0;
-  for (let i=0;i<header.length;i++){
-    const ch=header[i];
-    if(ch==='"'){ if(inQ && header[i+1]==='"'){i++;continue;} inQ=!inQ; continue; }
-    if(!inQ){ if(ch===',') c++; else if(ch===';') s++; }
+  let inQuotes = false; let comma = 0, semi = 0;
+  for (let i = 0; i < header.length; i++) {
+    const ch = header[i];
+    if (ch === '"') { if (inQuotes && header[i + 1] === '"') { i++; continue; } inQuotes = !inQuotes; }
+    else if (!inQuotes) { if (ch === ",") comma++; else if (ch === ";") semi++; }
   }
-  return s>c?";":",";
+  return semi > comma ? ";" : ",";
 }
+
+/** CSV robuste (guillemets + retours à la ligne en cellule). */
 function parseCSV(text: string): UnknownRecord[] {
   if (!text.trim()) return [];
   const firstNL = text.indexOf("\n") === -1 ? text.length : text.indexOf("\n");
   const delim = guessDelimiter(text.slice(0, firstNL));
-  const rows:string[][]=[]; let row:string[]=[]; let field=""; let inQ=false;
-  const pushField=()=>{ row.push(field); field=""; };
-  const pushRow=()=>{ if(row.length>1||(row.length===1&&row[0].trim()!=="")) rows.push(row); row=[]; };
-  for(let i=0;i<text.length;i++){
-    const ch=text[i];
-    if(ch==='"'){ if(inQ && text[i+1]==='"'){ field+='"'; i++; } else inQ=!inQ; continue; }
-    if(!inQ && ch===delim){ pushField(); continue; }
-    if(!inQ && (ch==="\n"||ch==="\r")){ if(ch==="\r"&&text[i+1]==="\n") i++; pushField(); pushRow(); continue; }
-    field+=ch;
+  const rows: string[][] = []; let row: string[] = []; let field = ""; let inQuotes = false;
+  const pushField = () => { row.push(field); field = ""; };
+  const pushRow = () => { if (row.length > 1 || (row.length === 1 && row[0].trim() !== "")) rows.push(row); row = []; };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') { if (inQuotes && text[i + 1] === '"') { field += '"'; i++; } else inQuotes = !inQuotes; continue; }
+    if (!inQuotes && ch === delim) { pushField(); continue; }
+    if (!inQuotes && (ch === "\n" || ch === "\r")) { if (ch === "\r" && text[i + 1] === "\n") i++; pushField(); pushRow(); continue; }
+    field += ch;
   }
   pushField(); pushRow();
-  if(!rows.length) return [];
-  const clean=(s:string)=>s.replace(/^\uFEFF/,"").replace(/\u00A0/g," ").replace(/\s+/g," ").trim();
-  const headers=rows[0].map(clean); const out:UnknownRecord[]=[];
-  for(let r=1;r<rows.length;r++){ const rec:UnknownRecord={}; const cols=rows[r];
-    headers.forEach((h,idx)=>{ rec[h]=(cols[idx]??"").replace(/\r$/,""); }); out.push(rec); }
+  if (!rows.length) return [];
+  const clean = (s: string) => s.replace(/^\uFEFF/, "").replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
+  const headers = rows[0].map(clean);
+  const out: UnknownRecord[] = [];
+  for (let r = 1; r < rows.length; r++) {
+    const rec: UnknownRecord = {}; const cols = rows[r];
+    headers.forEach((h, idx) => { rec[h] = (cols[idx] ?? "").replace(/\r$/, ""); });
+    out.push(rec);
+  }
   return out;
 }
 function splitList(raw?: string): string[] {
-  if (!raw) return []; return raw.split(/\n|\r|\|/g).map(s=>s.replace(/^[•\-\u2022]\s*/,"").trim()).filter(Boolean);
+  if (!raw) return [];
+  return raw.split(/\n|\r|\|/g).map((s) => s.replace(/^[•\-\u2022]\s*/, "").trim()).filter(Boolean);
 }
 function parseRating(raw?: string): number | undefined {
-  if (!raw) return undefined; const n = Number.parseFloat(raw.replace(",",".").trim());
-  if (Number.isNaN(n)) return undefined; return Math.min(5, Math.max(0, Math.round(n*2)/2));
+  if (!raw) return undefined;
+  const s = raw.replace(",", ".").trim(); const n = Number.parseFloat(s);
+  if (Number.isNaN(n)) return undefined;
+  return Math.min(5, Math.max(0, Math.round(n * 2) / 2));
 }
 
 /* ------------- mapping OFFERS ------------- */
@@ -90,9 +101,20 @@ function mapOffer(row: UnknownRecord): Offer {
     slug: getStr(row, ["Slug","slug"]),
     title: getStr(row, ["Title","Nom","name","title"]),
     brand: getStr(row, ["Marque","Brand","Marchand","merchant","brand"]),
-    imageUrl: getStr(row, ["imageUrl","Image_URL","Image Url","Image URL","image_url","Image","image"]),
+    imageUrl: getStr(row, [
+      "imageUrl","Image_URL","Image Url","Image URL","image_url","Image","image",
+      "Hero","Hero_Image","Hero URL","Image_Hero"
+    ]),
     price: getStr(row, ["Prix (€)","Prix€","Prix","Price","price"]),
-    affiliateUrl: getStr(row, ["Affiliate_URL","Affiliate Url","Affiliate URL","FinalURL","Final URL","Url","URL","url","link"]),
+    affiliateUrl: getStr(row, [
+      "Affiliate_URL","Affiliate URL","Affiliate Url","Affiliate Link","Affiliate",
+      "Affiliate_URL","FinalURL","Final URL",
+      "Url","URL","url","link",
+      "Lien affilié","Lien","Lien_achat",
+      "BuyLink","Buy Link",
+      "Product_URL","Product URL","URL produit",
+      "Amazon_URL","ASIN_URL"
+    ]),
     httpStatus: getStr(row, ["httpStatus","status","code"]),
   };
 }
@@ -121,8 +143,9 @@ function mapContent(row: UnknownRecord): ProductContent | null {
     if (q && a) faq.push({ q, a });
   }
   return {
-    slug, title: title || undefined, subtitle: subtitle || undefined, heroImage: heroImage || undefined,
-    intro: intro || undefined, pros: splitList(prosRaw), cons: splitList(consRaw),
+    slug, title: title || undefined, subtitle: subtitle || undefined,
+    heroImage: heroImage || undefined, intro: intro || undefined,
+    pros: splitList(prosRaw), cons: splitList(consRaw),
     howTo: howTo || undefined, ingredients: ingredients || undefined,
     faq: faq.length ? faq : undefined, rating: parseRating(note),
   };
@@ -134,8 +157,9 @@ const baseInit: RequestInit & { next?: { revalidate?: number } } =
     ? { cache: "no-store" } : { next: { revalidate: 1800 } };
 
 async function fetchRows(url?: string, needsKey = true): Promise<UnknownRecord[]> {
-  if (!url) return []; const init: RequestInit & { next?: { revalidate?: number } } = { ...baseInit };
-  if (needsKey && process.env.N8N_OFFERS_KEY) init.headers = { "x-api-key": String(process.env.N8N_OFFERS_KEY) };
+  if (!url) return [];
+  const init: RequestInit & { next?: { revalidate?: number } } = { ...baseInit };
+  if (needsKey && process.env.N8N_OFFERS_KEY) { init.headers = { "x-api-key": String(process.env.N8N_OFFERS_KEY) }; }
   const res = await fetch(url, init); if (!res.ok) return [];
   const ct = normStr(res.headers.get("content-type")).toLowerCase();
   if (ct.includes("application/json") || ct.includes("text/json")) return firstArray(await res.json() as unknown);
@@ -150,8 +174,11 @@ async function getAllOffers(): Promise<Offer[]> {
     { url: process.env.N8N_OFFERS_API, needsKey: true },
     { url: process.env.N8N_FEATURED_URL, needsKey: true },
     { url: process.env.SHEETS_OFFERS_CSV, needsKey: false },
-  ].filter(s=>!!s.url) as { url:string; needsKey:boolean }[];
-  for (const s of sources) { const rows = await fetchRows(s.url, s.needsKey); if (rows.length) return rows.map(mapOffer); }
+  ].filter((s) => !!s.url) as { url: string; needsKey: boolean }[];
+  for (const s of sources) {
+    const rows = await fetchRows(s.url, s.needsKey);
+    if (rows.length) return rows.map(mapOffer);
+  }
   return [];
 }
 async function getAllContent(): Promise<ProductContent[]> {
@@ -163,8 +190,10 @@ async function getAllContent(): Promise<ProductContent[]> {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const [content, offers] = await Promise.all([getAllContent(), getAllOffers()]);
-  const c = content.find(x=>x.slug.toLowerCase()===slug.toLowerCase()) || content.find(x=>x.title && slugify(x.title)===slug);
-  const o = offers.find(x=>normStr(x.slug).toLowerCase()===slug.toLowerCase()) || offers.find(x=>x.title && slugify(x.title)===slug);
+  const c = content.find((x) => x.slug.toLowerCase() === slug.toLowerCase())
+    || content.find((x) => x.title && slugify(x.title) === slug);
+  const o = offers.find((x) => normStr(x.slug).toLowerCase() === slug.toLowerCase())
+    || offers.find((x) => x.title && slugify(x.title) === slug);
   const title = c?.title || o?.title || slug;
   const desc = c?.intro || `Test et avis — ${title}. Sélection Booty & Cutie : conseils, utilisation et meilleures offres.`;
   return { title: `${title} — Test & avis`, description: desc };
@@ -176,13 +205,13 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
 
   const [offers, contents] = await Promise.all([getAllOffers(), getAllContent()]);
   const offer =
-    offers.find(o=>normStr(o.slug).toLowerCase()===slug.toLowerCase()) ||
-    offers.find(o=>o.title && slugify(o.title)===slug);
+    offers.find((o) => normStr(o.slug).toLowerCase() === slug.toLowerCase()) ||
+    offers.find((o) => o.title && slugify(o.title) === slug);
 
   const content =
-    contents.find(c=>c.slug.toLowerCase()===slug.toLowerCase()) ||
-    contents.find(c=>c.title && slugify(c.title)===slug) ||
-    (offer?.title ? contents.find(c=>c.title && slugify(c.title)===slugify(offer.title!)) : undefined);
+    contents.find((c) => c.slug.toLowerCase() === slug.toLowerCase()) ||
+    contents.find((c) => c.title && slugify(c.title) === slug) ||
+    (offer?.title ? contents.find((c) => c.title && slugify(c.title) === slugify(offer.title!)) : undefined);
 
   const title = content?.title || offer?.title || slug;
   const subtitle = content?.subtitle || offer?.brand || "";
@@ -192,8 +221,9 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const rating = content?.rating;
 
   const sameBrand = offer?.brand
-    ? offers.filter(o=>o.brand===offer.brand && normStr(o.slug).toLowerCase()!==slug.toLowerCase()) : [];
-  const fallbackRelated = offers.filter(o=>normStr(o.slug).toLowerCase()!==slug.toLowerCase());
+    ? offers.filter((o) => o.brand === offer.brand && normStr(o.slug).toLowerCase() !== slug.toLowerCase())
+    : [];
+  const fallbackRelated = offers.filter((o) => normStr(o.slug).toLowerCase() !== slug.toLowerCase());
   const related = (sameBrand.length ? sameBrand : fallbackRelated).slice(0, 4);
 
   return (
@@ -202,23 +232,39 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       <section className="grid items-start gap-8 md:grid-cols-2">
         <div className="relative overflow-hidden rounded-3xl bg-white p-3 shadow-md">
           <div className="overflow-hidden rounded-2xl">
-            <Image src={heroImg} alt={`${title} — photo produit`} width={1200} height={1200} className="aspect-square w-full object-cover" priority />
+            <Image
+              src={heroImg}
+              alt={`${title} — photo produit`}
+              width={1200}
+              height={1200}
+              unoptimized
+              className="aspect-square w-full object-cover"
+              priority
+            />
           </div>
         </div>
 
         <div>
-          <h1 className={`${bodoni.className} text-3xl md:text-4xl`} style={{ color: "var(--text)" }}>{title}</h1>
-          {subtitle ? (<p className={`${nunito.className} mt-1 text-base opacity-80`} style={{ color: "var(--text)" }}>{subtitle}</p>) : null}
+          <h1 className={`${bodoni.className} text-3xl md:text-4xl`} style={{ color: "var(--text)" }}>
+            {title}
+          </h1>
+          {subtitle ? (
+            <p className={`${nunito.className} mt-1 text-base opacity-80`} style={{ color: "var(--text)" }}>
+              {subtitle}
+            </p>
+          ) : null}
 
-          {/* Note /5 */}
+          {/* Note / 5 */}
           {typeof rating === "number" ? (
             <div className="mt-3 flex items-center gap-2">
               <ApricotRating rating={rating} />
-              <span className={`${nunito.className} text-sm opacity-70`} style={{ color: "var(--text)" }}>{String(rating).replace(".", ",")}/5</span>
+              <span className={`${nunito.className} text-sm opacity-70`} style={{ color: "var(--text)" }}>
+                {String(rating).replace(".", ",")}/5
+              </span>
             </div>
           ) : null}
 
-          {/* CTA — wrap + 2 boutons affiliés si dispo */}
+          {/* CTA */}
           <div className="mt-6 flex flex-wrap items-center gap-3">
             {affiliate ? (
               <>
@@ -250,7 +296,11 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
                 Voir toutes les offres
               </Link>
             )}
-            {price ? (<span className={`${bodoni.className} ml-auto text-xl`} style={{ color: "var(--text)" }}>{price}</span>) : null}
+            {price ? (
+              <span className={`${bodoni.className} ml-auto text-xl`} style={{ color: "var(--text)" }}>
+                {price}
+              </span>
+            ) : null}
           </div>
 
           {content?.intro ? (
@@ -263,7 +313,11 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           {content?.pros?.length ? (
             <div className="mt-6">
               <Card title="Pourquoi on aime">
-                <ul className="list-disc pl-5">{content.pros.map((li, i) => (<li key={`pro-${i}`} className="mb-1">{li}</li>))}</ul>
+                <ul className="list-disc pl-5">
+                  {content.pros.map((li, i) => (
+                    <li key={`pro-${i}`} className="mb-1">{li}</li>
+                  ))}
+                </ul>
               </Card>
             </div>
           ) : null}
@@ -274,7 +328,11 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       <section className="mt-10 grid gap-6 md:grid-cols-2">
         {content?.cons?.length ? (
           <Card title="À savoir">
-            <ul className="list-disc pl-5">{content.cons.map((li, i) => (<li key={`con-${i}`} className="mb-1">{li}</li>))}</ul>
+            <ul className="list-disc pl-5">
+              {content.cons.map((li, i) => (
+                <li key={`con-${i}`} className="mb-1">{li}</li>
+              ))}
+            </ul>
           </Card>
         ) : null}
 
@@ -296,7 +354,9 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       {/* FAQ */}
       {content?.faq?.length ? (
         <section className="mt-10">
-          <h2 className={`${bodoni.className} text-2xl mb-4`} style={{ color: "var(--text)" }}>FAQ</h2>
+          <h2 className={`${bodoni.className} text-2xl mb-4`} style={{ color: "var(--text)" }}>
+            FAQ
+          </h2>
           <div className="divide-y rounded-3xl border" style={{ borderColor: "var(--bg-light)" }}>
             {content.faq.map((f, i) => (
               <details key={`faq-${i}`} className="p-4">
@@ -311,9 +371,13 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       {/* RELATED */}
       {related.length ? (
         <section className="mt-12">
-          <h2 className={`${bodoni.className} text-2xl mb-4`} style={{ color: "var(--text)" }}>Produits liés</h2>
+          <h2 className={`${bodoni.className} text-2xl mb-4`} style={{ color: "var(--text)" }}>
+            Produits liés
+          </h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {related.map((o, i) => (<OfferCard key={`${o.productId}-${i}`} offer={o} index={i} originSlug={slug} />))}
+            {related.map((o, i) => (
+              <OfferCard key={`${o.productId}-${i}`} offer={o} index={i} originSlug={slug} />
+            ))}
           </div>
         </section>
       ) : null}
@@ -334,13 +398,21 @@ function Card({ title, children }: React.PropsWithChildren<{ title: string }>) {
 /* ---- Abricots (0..5, demi-points) ---- */
 function ApricotRating({ rating }: { rating: number }) {
   const items = Array.from({ length: 5 }, (_, i) => {
-    const idx = i + 1; if (rating >= idx) return "full" as const;
-    if (rating >= idx - 0.5) return "half" as const; return "empty" as const;
+    const idx = i + 1;
+    if (rating >= idx) return "full" as const;
+    if (rating >= idx - 0.5) return "half" as const;
+    return "empty" as const;
   });
-  return (<div className="flex items-center gap-1">{items.map((s, i) => (<ApricotIcon key={i} state={s} />))}</div>);
+  return (
+    <div className="flex items-center gap-1">
+      {items.map((state, i) => (
+        <ApricotIcon key={i} state={state} />
+      ))}
+    </div>
+  );
 }
 function ApricotIcon({ state }: { state: "full" | "half" | "empty" }) {
-  const size = 18, accent = "var(--accent)", stroke = "var(--accent)", emptyFill = "transparent";
+  const size = 18; const accent = "var(--accent)"; const stroke = "var(--accent)"; const emptyFill = "transparent";
   if (state === "half") {
     return (
       <span className="relative inline-block" style={{ width: size, height: size }}>

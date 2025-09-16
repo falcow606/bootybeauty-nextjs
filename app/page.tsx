@@ -5,13 +5,10 @@ import Link from "next/link";
 import Image from "next/image";
 import { Bodoni_Moda, Nunito_Sans } from "next/font/google";
 
-// Fonts
 const bodoni = Bodoni_Moda({ subsets: ["latin"], style: ["normal"], weight: ["400", "600", "700"] });
 const nunito = Nunito_Sans({ subsets: ["latin"], weight: ["300", "400", "600", "700"] });
 
-// -------------------- Types & helpers --------------------
 type UnknownRecord = Record<string, unknown>;
-
 type FeaturedProduct = {
   id?: string;
   title: string;
@@ -23,12 +20,8 @@ type FeaturedProduct = {
 };
 
 function slugify(input: string): string {
-  const s = input
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  const s = input.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   return s || "produit";
 }
 function truthy(v: unknown): boolean {
@@ -41,7 +34,7 @@ function truthy(v: unknown): boolean {
 function getStr(obj: UnknownRecord, keys: string[]): string | undefined {
   for (const k of keys) {
     const v = obj[k];
-    if (typeof v === "string") return v;
+    if (typeof v === "string" && v.trim()) return v.trim();
     if (typeof v === "number") return String(v);
   }
   return undefined;
@@ -51,9 +44,16 @@ function mapOffer(row: UnknownRecord): FeaturedProduct {
     id: getStr(row, ["Product_ID", "ID", "id"]),
     title: getStr(row, ["Title", "Nom", "name"]) ?? "Produit",
     brand: getStr(row, ["Marque", "Brand", "Marchand"]),
-    imageUrl: getStr(row, ["imageUrl", "Image_URL", "Image", "image"]),
+    imageUrl: getStr(row, ["imageUrl", "Image_URL", "Image Url", "Image URL", "image_url", "Image", "image", "Hero", "Hero_Image", "Hero URL", "Image_Hero"]),
     price: getStr(row, ["Prix (€)", "Price", "price"]),
-    affiliateUrl: getStr(row, ["Affiliate_URL", "FinalURL", "Url", "url"]),
+    affiliateUrl: getStr(row, [
+      "affiliateUrl","finalUrl","url","link",
+      "Affiliate_URL","Affiliate URL","Affiliate Url","Affiliate Link","Affiliate",
+      "Lien affilié","Lien","Lien_achat",
+      "BuyLink","Buy Link",
+      "Product_URL","Product URL","URL produit",
+      "Amazon_URL","ASIN_URL"
+    ]),
     slug: getStr(row, ["Slug", "slug"]),
   };
 }
@@ -96,7 +96,6 @@ async function getFeaturedOffers(): Promise<FeaturedProduct[]> {
   return filtered.slice(0, 3).map(mapOffer);
 }
 
-// Typage propre pour les variables CSS
 type CSSVars = React.CSSProperties & {
   ["--accent"]: string;
   ["--secondary"]: string;
@@ -105,7 +104,6 @@ type CSSVars = React.CSSProperties & {
   ["--text"]: string;
 };
 
-// ------------------------------- Page -------------------------------
 export default async function HomePage() {
   const featured = await getFeaturedOffers();
 
@@ -120,7 +118,7 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen w-full" style={rootStyle}>
-      {/* HERO (header global via app/layout.tsx) */}
+      {/* HERO */}
       <section className="mx-auto grid max-w-6xl items-center gap-8 px-6 pb-8 pt-10 md:grid-cols-2">
         <div>
           <h1 className={`${bodoni.className} text-4xl leading-tight md:text-5xl`} style={{ color: "var(--text)" }}>
@@ -141,6 +139,7 @@ export default async function HomePage() {
             alt="Courbes douces, esthétique clean — Booty & Cutie"
             width={1200}
             height={900}
+            unoptimized
             className="aspect-[4/3] w-full rounded-3xl object-cover shadow-xl"
             priority
           />
@@ -177,20 +176,17 @@ export default async function HomePage() {
           })}
         </section>
 
-        {/* Bandeau confiance */}
         <section className="mt-12 grid gap-6 md:grid-cols-3">
           <TrustItem title="Sélection éditoriale">Nos choix sont indépendants et argumentés.</TrustItem>
           <TrustItem title="Transparence affiliée">Nous le signalons clairement quand un lien est affilié.</TrustItem>
           <TrustItem title="Mises à jour">Offres et contenus rafraîchis régulièrement.</TrustItem>
         </section>
 
-        {/* CTA vers toutes les offres */}
         <div className="mt-12 flex items-center justify-center">
           <PrimaryButton href="/offers">Voir toutes les offres</PrimaryButton>
         </div>
       </main>
 
-      {/* FOOTER local */}
       <footer className="mt-6">
         <div className="mx-auto max-w-6xl px-6 pb-16">
           <div className={`${nunito.className} rounded-3xl p-6`} style={{ backgroundColor: "var(--secondary)", color: "#333" }}>
@@ -207,11 +203,8 @@ export default async function HomePage() {
   );
 }
 
-// -------------------- UI primitives --------------------
 type ButtonLinkProps = {
-  href?: string;
-  target?: string;
-  rel?: string;
+  href?: string; target?: string; rel?: string;
 } & React.ButtonHTMLAttributes<HTMLButtonElement>;
 
 function PrimaryButton({ children, href, target, rel, ...props }: React.PropsWithChildren<ButtonLinkProps>) {
@@ -220,14 +213,12 @@ function PrimaryButton({ children, href, target, rel, ...props }: React.PropsWit
   if (href) return <Link href={href} className={className} style={style} target={target} rel={rel}>{children}</Link>;
   return <button className={className} style={style} {...props}>{children}</button>;
 }
-
 function SecondaryButton({ children, href, target, rel, ...props }: React.PropsWithChildren<ButtonLinkProps>) {
   const className = `${nunito.className} rounded-2xl border px-5 py-3 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60`;
   const style = { borderColor: "var(--accent)", color: "var(--accent)", backgroundColor: "transparent" } as React.CSSProperties;
   if (href) return <Link href={href} className={className} style={style} target={target} rel={rel}>{children}</Link>;
   return <button className={className} style={style} {...props}>{children}</button>;
 }
-
 function Badge({ children }: React.PropsWithChildren) {
   return (
     <span className={`${nunito.className} inline-block rounded-full px-3 py-1 text-sm`} style={{ backgroundColor: "var(--bg-main)", border: "1px solid var(--bg-light)", color: "var(--text)" }}>
@@ -235,27 +226,12 @@ function Badge({ children }: React.PropsWithChildren) {
     </span>
   );
 }
-
 function ProductCard({
-  title,
-  price = "",
-  tag,
-  imageSrc = "/images/product-placeholder.jpg",
-  brand,
-  href,
-  detailsHref,
-}: {
-  title: string;
-  price?: string;
-  tag?: string;
-  imageSrc?: string;
-  brand?: string;
-  href?: string;
-  detailsHref?: string;
-}) {
+  title, price = "", tag, imageSrc = "/images/product-placeholder.jpg", brand, href, detailsHref,
+}: { title: string; price?: string; tag?: string; imageSrc?: string; brand?: string; href?: string; detailsHref?: string; }) {
   return (
     <article className="flex flex-col rounded-3xl bg-white p-5 shadow-md">
-      <Image src={imageSrc} alt={`${title} — photo produit`} width={600} height={600} className="aspect-square w-full rounded-2xl object-cover" />
+      <Image src={imageSrc} alt={`${title} — photo produit`} width={600} height={600} unoptimized className="aspect-square w-full rounded-2xl object-cover" />
       <div className="mt-4 flex items-start justify-between gap-4">
         <div>
           <h3 className={`${bodoni.className} text-xl`} style={{ color: "var(--accent)" }}>{title}</h3>
@@ -279,7 +255,6 @@ function ProductCard({
     </article>
   );
 }
-
 function TrustItem({ title, children }: React.PropsWithChildren<{ title: string }>) {
   return (
     <div className="rounded-3xl border p-5" style={{ borderColor: "var(--bg-light)" }}>

@@ -6,12 +6,11 @@ import Link from 'next/link';
 
 /** Type large pour couvrir Sheet/n8n (null-safe) */
 export type AnyOffer = {
-  // Identifiants
   id?: string | number | null;
   productId?: string | number | null;
   slug?: string | null;
 
-  // Libellés & visuels
+  // libellés & visuels
   title?: string | null;
   name?: string | null;
   brand?: string | null;
@@ -22,17 +21,32 @@ export type AnyOffer = {
   image_url?: string | null;
   Image_URL?: string | null;
 
-  // Prix
+  // prix
   price?: string | number | null;
   priceEur?: string | number | null;
   ['Prix (€)']?: string | number | null;
 
-  // Liens
+  // liens
   affiliateUrl?: string | null;
   finalUrl?: string | null;
   url?: string | null;
+  link?: string | null;
+  // variantes fréquentes dans GS
+  ['Affiliate URL']?: string | null;
+  ['Affiliate Url']?: string | null;
+  ['Affiliate Link']?: string | null;
+  ['Affiliate']?: string | null;
+  ['Lien affilié']?: string | null;
+  ['Lien']?: string | null;
+  ['Lien_achat']?: string | null;
+  ['BuyLink']?: string | null;
+  ['Buy Link']?: string | null;
+  ['Product_URL']?: string | null;
+  ['Product URL']?: string | null;
+  ['URL produit']?: string | null;
+  ['Amazon_URL']?: string | null;
+  ['ASIN_URL']?: string | null;
 
-  // Statut HTTP (optionnel)
   httpStatus?: number | string | null;
 };
 
@@ -41,34 +55,52 @@ export type Offer = AnyOffer;
 export type OfferCardProps = {
   offer: AnyOffer;
   index: number;
-  /** slug de la page d'origine (ex: 'offers' ou fiche courante) */
   originSlug?: string;
 };
 
-/** Slugify sûr (enlève accents, espaces → tirets, minuscules) */
 function slugify(input: string): string {
   const s = input
-    .normalize('NFD')                   // décompose accents
-    .replace(/[\u0300-\u036f]/g, '')   // retire diacritiques
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')       // remplace blocs non alphanum par -
-    .replace(/^-+|-+$/g, '');          // trim -
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
   return s || 'produit';
+}
+
+function getStrLoose(obj: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+    if (typeof v === 'number') return String(v);
+  }
+  return undefined;
 }
 
 export default function OfferCard({ offer, index, originSlug }: OfferCardProps) {
   const title = offer.title ?? offer.name ?? 'Produit';
   const brand = offer.brand ?? offer.merchant ?? offer.marchand ?? '';
-  const img = offer.imageUrl ?? offer.Image_URL ?? offer.image_url ?? offer.image ?? '';
+  const img =
+    getStrLoose(offer as Record<string, unknown>, [
+      'imageUrl', 'Image_URL', 'Image Url', 'Image URL', 'image_url', 'Image', 'image',
+      // fallback : certains mettent l’héro dans la même colonne
+      'Hero', 'Hero_Image', 'Hero URL', 'Image_Hero'
+    ]) ?? '';
+
   const priceRaw = offer.price ?? offer.priceEur ?? offer['Prix (€)'] ?? '';
   const price = typeof priceRaw === 'number' ? `${priceRaw.toFixed(2)}€` : (priceRaw || '');
 
-  // Lien fiche produit : slug direct si dispo, sinon slug créé depuis le titre
-  const rawSlug = (offer.slug ?? '').trim();
+  const rawSlug = (offer.slug ?? '').toString().trim();
   const computedSlug = rawSlug || (title !== 'Produit' ? slugify(title) : '');
   const detailsHref = computedSlug ? `/p/${computedSlug}` : '/offers';
 
-  const affiliate = offer.affiliateUrl ?? offer.finalUrl ?? offer.url ?? '';
+  const affiliate =
+    getStrLoose(offer as Record<string, unknown>, [
+      'affiliateUrl', 'finalUrl', 'url', 'link',
+      'Affiliate_URL', 'Affiliate URL', 'Affiliate Url', 'Affiliate Link', 'Affiliate',
+      'Lien affilié', 'Lien', 'Lien_achat',
+      'BuyLink', 'Buy Link',
+      'Product_URL', 'Product URL', 'URL produit',
+      'Amazon_URL', 'ASIN_URL'
+    ]) ?? '';
 
   async function trackClick() {
     try {
@@ -92,15 +124,15 @@ export default function OfferCard({ offer, index, originSlug }: OfferCardProps) 
       className="flex flex-col rounded-3xl bg-white p-5 shadow-md transition hover:shadow-lg"
       style={{ border: '1px solid var(--bg-light)' }}
     >
-      {/* Image (look simple & propre, arrondi) */}
+      {/* Image avec unoptimized pour tolérer tous les domaines */}
       <div className="relative overflow-hidden rounded-2xl">
         <Image
           src={img || '/images/product-placeholder.jpg'}
           alt={`${title} — photo produit`}
           width={800}
           height={800}
+          unoptimized
           className="aspect-square w-full object-cover"
-          priority={false}
         />
       </div>
 
@@ -113,7 +145,6 @@ export default function OfferCard({ offer, index, originSlug }: OfferCardProps) 
             {brand || 'Soin corps • 200 ml'}
           </p>
         </div>
-        {/* aucun badge */}
       </div>
 
       <div className="mt-4 flex items-center justify-between">
