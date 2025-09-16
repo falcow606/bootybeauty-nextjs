@@ -107,8 +107,9 @@ function mapOffer(row: UnknownRecord): Offer {
     ]),
     price: getStr(row, ["Prix (€)","Prix€","Prix","Price","price"]),
     affiliateUrl: getStr(row, [
-      "Affiliate_URL","Affiliate URL","Affiliate Url","Affiliate Link","Affiliate",
-      "Affiliate_URL","FinalURL","Final URL",
+      // ⬇️ ton cas “Affiliate_URL” est bien couvert
+      "affiliateUrl","Affiliate_URL","Affiliate URL","Affiliate Url","Affiliate Link","Affiliate",
+      "finalUrl","FinalURL","Final URL",
       "Url","URL","url","link",
       "Lien affilié","Lien","Lien_achat",
       "BuyLink","Buy Link",
@@ -186,6 +187,28 @@ async function getAllContent(): Promise<ProductContent[]> {
   return rows.map(mapContent).filter(Boolean) as ProductContent[];
 }
 
+/* ---------------- helpers page ---------------- */
+function displayPrice(p?: string): string {
+  if (!p) return "";
+  const s = p.trim();
+  return /€/.test(s) ? s : `${s} €`;
+}
+function pickAffiliate(o?: Offer): string {
+  if (!o) return "";
+  const obj = o as unknown as Record<string, unknown>;
+  return (
+    getStr(obj, [
+      "affiliateUrl","Affiliate_URL","Affiliate URL","Affiliate Url","Affiliate Link","Affiliate",
+      "finalUrl","FinalURL","Final URL",
+      "Url","URL","url","link",
+      "Lien affilié","Lien","Lien_achat",
+      "BuyLink","Buy Link",
+      "Product_URL","Product URL","URL produit",
+      "Amazon_URL","ASIN_URL"
+    ]) || ""
+  );
+}
+
 /* ------------- SEO ------------- */
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -214,10 +237,12 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     (offer?.title ? contents.find((c) => c.title && slugify(c.title) === slugify(offer.title!)) : undefined);
 
   const title = content?.title || offer?.title || slug;
-  const subtitle = content?.subtitle || offer?.brand || "";
+  // ⚠️ on n’utilise PAS brand ici pour éviter le doublon — on l’affiche sous la note
+  const subtitle = content?.subtitle || "";
+  const brand = offer?.brand;
   const heroImg = content?.heroImage || offer?.imageUrl || "/images/product-placeholder.jpg";
-  const price = offer?.price || "";
-  const affiliate = offer?.affiliateUrl || "";
+  const price = displayPrice(offer?.price || "");
+  const affiliate = pickAffiliate(offer);
   const rating = content?.rating;
 
   const sameBrand = offer?.brand
@@ -248,19 +273,29 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           <h1 className={`${bodoni.className} text-3xl md:text-4xl`} style={{ color: "var(--text)" }}>
             {title}
           </h1>
+
           {subtitle ? (
             <p className={`${nunito.className} mt-1 text-base opacity-80`} style={{ color: "var(--text)" }}>
               {subtitle}
             </p>
           ) : null}
 
-          {/* Note / 5 */}
-          {typeof rating === "number" ? (
-            <div className="mt-3 flex items-center gap-2">
-              <ApricotRating rating={rating} />
-              <span className={`${nunito.className} text-sm opacity-70`} style={{ color: "var(--text)" }}>
-                {String(rating).replace(".", ",")}/5
-              </span>
+          {/* Note / 5 + Marque sous la note */}
+          {(typeof rating === "number" || brand) ? (
+            <div className="mt-3">
+              {typeof rating === "number" ? (
+                <div className="flex items-center gap-2">
+                  <ApricotRating rating={rating} />
+                  <span className={`${nunito.className} text-sm opacity-70`} style={{ color: "var(--text)" }}>
+                    {String(rating).replace(".", ",")}/5
+                  </span>
+                </div>
+              ) : null}
+              {brand ? (
+                <div className={`${nunito.className} mt-1 text-sm opacity-80`} style={{ color: "var(--text)" }}>
+                  {brand}
+                </div>
+              ) : null}
             </div>
           ) : null}
 
