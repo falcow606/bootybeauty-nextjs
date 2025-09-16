@@ -60,7 +60,7 @@ function firstArray(json: unknown): UnknownRecord[] {
   return [];
 }
 
-/** Délimiteur deviné sur la 1ère ligne (hors guillemets) */
+/** Détecte le délimiteur sur la première ligne (hors guillemets). */
 function guessDelimiter(header: string): "," | ";" {
   let inQuotes = false;
   let comma = 0, semi = 0;
@@ -77,11 +77,10 @@ function guessDelimiter(header: string): "," | ";" {
   return semi > comma ? ";" : ",";
 }
 
-/** CSV robuste : gère guillemets + retours à la ligne en cellule */
+/** CSV robuste : gère guillemets + retours à la ligne en cellule. */
 function parseCSV(text: string): UnknownRecord[] {
   if (!text.trim()) return [];
 
-  // Détecter le délimiteur sur la première “vraie” ligne
   const firstNL = text.indexOf("\n") === -1 ? text.length : text.indexOf("\n");
   const headerSlice = text.slice(0, firstNL);
   const delim = guessDelimiter(headerSlice);
@@ -93,7 +92,6 @@ function parseCSV(text: string): UnknownRecord[] {
 
   const pushField = () => { row.push(field); field = ""; };
   const pushRow = () => {
-    // ignore lignes vides
     if (row.length > 1 || (row.length === 1 && row[0].trim() !== "")) rows.push(row);
     row = [];
   };
@@ -107,33 +105,21 @@ function parseCSV(text: string): UnknownRecord[] {
       continue;
     }
 
-    if (!inQuotes && ch === delim) {
-      pushField();
-      continue;
-    }
+    if (!inQuotes && ch === delim) { pushField(); continue; }
 
     if (!inQuotes && (ch === "\n" || ch === "\r")) {
-      // Gérer \r\n
       if (ch === "\r" && text[i + 1] === "\n") i++;
-      pushField();
-      pushRow();
-      continue;
+      pushField(); pushRow(); continue;
     }
 
     field += ch;
   }
-  // dernier champ/ligne
-  pushField();
-  pushRow();
+  pushField(); pushRow();
 
   if (!rows.length) return [];
 
-  // Nettoyage des entêtes
   const clean = (s: string) =>
-    s.replace(/^\uFEFF/, "") // BOM
-      .replace(/\u00A0/g, " ") // NBSP
-      .replace(/\s+/g, " ")
-      .trim();
+    s.replace(/^\uFEFF/, "").replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
 
   const headers = rows[0].map(clean);
   const out: UnknownRecord[] = [];
@@ -358,13 +344,20 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
                 Choisir
               </Link>
             ) : null}
-            <Link
-              href="/offers"
-              className="rounded-2xl border px-5 py-3 transition hover:opacity-90"
-              style={{ borderColor: "var(--accent)", color: "var(--accent)", backgroundColor: "transparent" }}
-            >
-              Voir toutes les offres
-            </Link>
+
+            {/* ⬇️ remplace “Voir toutes les offres” par “Voir l’offre” (lien affilié) */}
+            {affiliate ? (
+              <Link
+                href={affiliate}
+                target="_blank"
+                rel="nofollow sponsored noopener"
+                className="rounded-2xl border px-5 py-3 transition hover:opacity-90"
+                style={{ borderColor: "var(--accent)", color: "var(--accent)", backgroundColor: "transparent" }}
+              >
+                Voir l’offre
+              </Link>
+            ) : null}
+
             {price ? (
               <span className={`${bodoni.className} ml-auto text-xl`} style={{ color: "var(--text)" }}>
                 {price}
@@ -377,21 +370,24 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
               {content.intro}
             </p>
           ) : null}
+
+          {/* ⬇️ “Pourquoi on aime” sous l’intro */}
+          {content?.pros?.length ? (
+            <div className="mt-6">
+              <Card title="Pourquoi on aime">
+                <ul className="list-disc pl-5">
+                  {content.pros.map((li, i) => (
+                    <li key={`pro-${i}`} className="mb-1">{li}</li>
+                  ))}
+                </ul>
+              </Card>
+            </div>
+          ) : null}
         </div>
       </section>
 
-      {/* SECTIONS */}
+      {/* SECTIONS — Cons & HowTo sur la même ligne, Ingrédients en dessous (full) */}
       <section className="mt-10 grid gap-6 md:grid-cols-2">
-        {content?.pros?.length ? (
-          <Card title="Pourquoi on aime">
-            <ul className="list-disc pl-5">
-              {content.pros.map((li, i) => (
-                <li key={`pro-${i}`} className="mb-1">{li}</li>
-              ))}
-            </ul>
-          </Card>
-        ) : null}
-
         {content?.cons?.length ? (
           <Card title="À savoir">
             <ul className="list-disc pl-5">
@@ -409,9 +405,11 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
         ) : null}
 
         {content?.ingredients ? (
-          <Card title="Ingrédients clés">
-            <p className="whitespace-pre-line">{content.ingredients}</p>
-          </Card>
+          <div className="md:col-span-2">
+            <Card title="Ingrédients clés">
+              <p className="whitespace-pre-line">{content.ingredients}</p>
+            </Card>
+          </div>
         ) : null}
       </section>
 
