@@ -206,7 +206,7 @@ export default async function OffersPage() {
           Nos offres sélectionnées
         </h1>
         <p className={`${nunito.className} mt-2 opacity-80`} style={{ color: "var(--text)" }}>
-          Peu d’items, bien choisis. Transparence sur l’affiliation.
+          Peu d’items, bien choisis.
         </p>
       </header>
 
