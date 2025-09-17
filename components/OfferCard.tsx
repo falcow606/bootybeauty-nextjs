@@ -1,119 +1,103 @@
 // components/OfferCard.tsx
-import Image from "next/image";
 import Link from "next/link";
-import AffiliateLink from "@/components/AffiliateLink";
+import Image from "next/image";
 
 export type CardOffer = {
   productId?: string;
+  slug?: string;
   title?: string;
   brand?: string;
-  merchant?: string;
+  price?: number | string;
   imageUrl?: string;
-  price?: string | number;
   affiliateUrl?: string;
-  slug?: string;
+  merchant?: string;
+  httpStatus?: number | string;
 };
 
-function slugify(input: string): string {
-  return (input || "")
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase().replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "produit";
-}
-
-function detailsHref(o: CardOffer): string {
-  if (o.slug && o.slug.trim()) return `/p/${o.slug}`;
-  if (o.title) return `/p/${slugify(o.title)}`;
-  return "/offers";
-}
-
-function displayPrice(p?: string | number): string {
+function euro(p?: number | string) {
   if (p == null || p === "") return "";
-  if (typeof p === "number") {
-    return p.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
-  }
   const num = Number(String(p).replace(",", "."));
   return Number.isFinite(num)
     ? num.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €"
     : String(p);
 }
 
+function slugify(input: string) {
+  return input
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 export default function OfferCard({
   offer,
-  index,
-  _originSlug, // peut être passé par la fiche produit ; on le marque utilisé ci-dessous
 }: {
   offer: CardOffer;
   index?: number;
-  _originSlug?: string;
+  originSlug?: string;
 }) {
-  // Marque la variable comme utilisée pour éviter le warning ESLint:
-  void _originSlug;
+  const {
+    title = "Produit",
+    brand,
+    imageUrl,
+    price,
+    slug,
+    affiliateUrl,
+    httpStatus,
+  } = offer;
 
-  const title = offer.title || "Produit";
-  const brand = offer.brand || offer.merchant || "";
-  const price = displayPrice(offer.price);
-  const img = offer.imageUrl || "/images/product-placeholder.jpg";
-  const hrefDetails = detailsHref(offer);
-  const affiliate = offer.affiliateUrl && offer.affiliateUrl.trim() ? offer.affiliateUrl : undefined;
+  const s = slug || slugify(title);
+  const hasAff =
+    !!affiliateUrl && String(httpStatus ?? "200") === "200";
 
   return (
-    <article className="group flex flex-col overflow-hidden rounded-3xl bg-white shadow-md ring-1 ring-[#EBD9CC] transition hover:shadow-lg">
-      {/* Frame image validé */}
-      <div className="p-3">
-        <div className="aspect-square w-full overflow-hidden rounded-2xl bg-[#FAF0E6]">
-          <Image
-            src={img}
-            alt={`${title} — photo produit`}
-            width={800}
-            height={800}
-            unoptimized
-            className="h-full w-full object-contain"
-            priority={index === 0}
-          />
-        </div>
+    <article className="group relative flex h-full flex-col overflow-hidden rounded-3xl bg-white p-5 shadow-md ring-1 ring-[var(--bg-light)]">
+      <div className="rounded-2xl bg-[var(--bg-main)] p-3">
+        <Image
+          src={imageUrl || "/images/product-placeholder.jpg"}
+          alt={title}
+          width={800}
+          height={800}
+          unoptimized
+          className="aspect-square w-full rounded-xl object-cover"
+        />
       </div>
 
-      {/* Texte */}
-      <div className="px-5 pb-5">
-        <div className="mt-1 flex items-start justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-semibold text-[#C4A092]">{title}</h3>
-            <p className="text-sm opacity-80">{brand}</p>
-          </div>
-        </div>
+      <div className="mt-4 flex-1">
+        <h3 className="font-serif text-xl" style={{ color: "var(--text)" }}>
+          {title}
+        </h3>
+        {brand ? (
+          <p className="mt-1 text-sm opacity-80">{brand}</p>
+        ) : null}
+        <p className="mt-3 font-serif text-lg" style={{ color: "var(--text)" }}>
+          {euro(price)}
+        </p>
+      </div>
 
-        <div className="mt-4 flex items-center justify-between">
-          <span className="text-base font-medium text-[#333]">{price}</span>
-          <div className="flex items-center gap-2">
-            <Link
-              href={hrefDetails}
-              className="rounded-2xl border px-4 py-2 text-sm transition hover:opacity-90"
-              style={{ borderColor: "#C4A092", color: "#C4A092" }}
-              prefetch
-            >
-              Détails
-            </Link>
+      <div className="mt-4 flex items-center gap-2">
+        <Link
+          href={`/p/${s}`}
+          className="rounded-2xl border px-5 py-3 transition"
+          style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
+          prefetch
+        >
+          Détails
+        </Link>
 
-            {affiliate ? (
-              <AffiliateLink
-                href={affiliate}
-                merchant={brand || "Shop"}
-                className="rounded-2xl px-4 py-2 text-sm text-white"
-              >
-                Voir l’offre
-              </AffiliateLink>
-            ) : (
-              <Link
-                href="/offers"
-                className="rounded-2xl px-4 py-2 text-sm text-white"
-                style={{ backgroundColor: "#C4A092" }}
-              >
-                Voir l’offre
-              </Link>
-            )}
-          </div>
-        </div>
+        {hasAff ? (
+          <Link
+            href={affiliateUrl as string}
+            target="_blank"
+            rel="nofollow sponsored noopener"
+            className="rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
+            style={{ backgroundColor: "var(--accent)" }}
+          >
+            Voir l’offre
+          </Link>
+        ) : null}
       </div>
     </article>
   );
