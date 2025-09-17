@@ -1,20 +1,25 @@
-'use client';
-
-import * as React from 'react';
-import OfferCard, { type Offer } from '@/components/OfferCard';
+// components/OffersClient.tsx
+import * as React from "react";
+import OfferCard, { type CardOffer } from "@/components/OfferCard";
 
 export type OffersClientProps = {
-  items: Offer[];
+  items: CardOffer[];
   originSlug?: string;
 };
 
-export default function OffersClient({ items, originSlug = 'offers' }: OffersClientProps) {
-  const ready = Array.isArray(items) ? items : [];
-
+export default function OffersClient({ items, originSlug }: OffersClientProps) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return null;
+  }
   return (
     <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-      {ready.map((o, i) => (
-        <OfferCard key={`${String(o.productId ?? o.id ?? i)}`} offer={o} index={i} originSlug={originSlug} />
+      {items.map((o, i) => (
+        <OfferCard
+          key={`${o.productId || o.slug || o.title || i}-${i}`}
+          offer={o}
+          index={i}
+          _originSlug={originSlug}
+        />
       ))}
     </div>
   );

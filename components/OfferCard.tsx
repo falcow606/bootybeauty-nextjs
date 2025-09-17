@@ -41,12 +41,15 @@ function displayPrice(p?: string | number): string {
 export default function OfferCard({
   offer,
   index,
-  _originSlug, // éviter le warning no-unused-vars
+  _originSlug, // peut être passé par la fiche produit ; on le marque utilisé ci-dessous
 }: {
   offer: CardOffer;
   index?: number;
   _originSlug?: string;
 }) {
+  // Marque la variable comme utilisée pour éviter le warning ESLint:
+  void _originSlug;
+
   const title = offer.title || "Produit";
   const brand = offer.brand || offer.merchant || "";
   const price = displayPrice(offer.price);
