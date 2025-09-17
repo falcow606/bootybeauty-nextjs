@@ -24,33 +24,27 @@ function euro(p?: number | string) {
 
 function slugify(input: string) {
   return input
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
-export default function OfferCard({
-  offer,
-}: {
-  offer: CardOffer;
-  index?: number;
-  originSlug?: string;
-}) {
-  const {
-    title = "Produit",
-    brand,
-    imageUrl,
-    price,
-    slug,
-    affiliateUrl,
-    httpStatus,
-  } = offer;
-
+export default function OfferCard({ offer }: { offer: CardOffer; index?: number; originSlug?: string }) {
+  const { title = "Produit", brand, imageUrl, price, slug, affiliateUrl } = offer;
   const s = slug || slugify(title);
-  const hasAff =
-    !!affiliateUrl && String(httpStatus ?? "200") === "200";
+  const hasAff = typeof affiliateUrl === "string" && affiliateUrl.trim().length > 0;
+
+  // bouton externe pour les liens http(s)
+  const OfferCta = hasAff ? (
+    <a
+      href={affiliateUrl as string}
+      target="_blank"
+      rel="nofollow sponsored noopener"
+      className="rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
+      style={{ backgroundColor: "var(--accent)" }}
+    >
+      Voir l’offre
+    </a>
+  ) : null;
 
   return (
     <article className="group relative flex h-full flex-col overflow-hidden rounded-3xl bg-white p-5 shadow-md ring-1 ring-[var(--bg-light)]">
@@ -66,15 +60,9 @@ export default function OfferCard({
       </div>
 
       <div className="mt-4 flex-1">
-        <h3 className="font-serif text-xl" style={{ color: "var(--text)" }}>
-          {title}
-        </h3>
-        {brand ? (
-          <p className="mt-1 text-sm opacity-80">{brand}</p>
-        ) : null}
-        <p className="mt-3 font-serif text-lg" style={{ color: "var(--text)" }}>
-          {euro(price)}
-        </p>
+        <h3 className="font-serif text-xl" style={{ color: "var(--text)" }}>{title}</h3>
+        {brand ? <p className="mt-1 text-sm opacity-80">{brand}</p> : null}
+        <p className="mt-3 font-serif text-lg" style={{ color: "var(--text)" }}>{euro(price)}</p>
       </div>
 
       <div className="mt-4 flex items-center gap-2">
@@ -86,18 +74,7 @@ export default function OfferCard({
         >
           Détails
         </Link>
-
-        {hasAff ? (
-          <Link
-            href={affiliateUrl as string}
-            target="_blank"
-            rel="nofollow sponsored noopener"
-            className="rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
-            style={{ backgroundColor: "var(--accent)" }}
-          >
-            Voir l’offre
-          </Link>
-        ) : null}
+        {OfferCta}
       </div>
     </article>
   );
