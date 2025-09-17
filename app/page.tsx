@@ -226,6 +226,7 @@ function Badge({ children }: React.PropsWithChildren) {
     </span>
   );
 }
+
 function ProductCard({
   title, price = "", tag, imageSrc = "/images/product-placeholder.jpg", brand, href, detailsHref,
 }: { title: string; price?: string; tag?: string; imageSrc?: string; brand?: string; href?: string; detailsHref?: string; }) {
@@ -255,6 +256,7 @@ function ProductCard({
     </article>
   );
 }
+
 function TrustItem({ title, children }: React.PropsWithChildren<{ title: string }>) {
   return (
     <div className="rounded-3xl border p-5" style={{ borderColor: "var(--bg-light)" }}>
@@ -262,84 +264,4 @@ function TrustItem({ title, children }: React.PropsWithChildren<{ title: string 
       <p className={`${nunito.className} mt-2 text-sm opacity-80`} style={{ color: "var(--text)" }}>{children}</p>
     </div>
   );
-}// …le reste de ta page ne change pas
-
-function ProductCard({
-  title,
-  price = "",
-  tag,
-  imageSrc = "/images/product-placeholder.jpg",
-  brand,
-  href,
-  detailsHref,
-}: {
-  title: string;
-  price?: string;
-  tag?: string;
-  imageSrc?: string;
-  brand?: string;
-  href?: string;
-  detailsHref?: string;
-}) {
-  return (
-    <article className="flex flex-col rounded-3xl bg-white p-5 shadow-md">
-      <Image
-        src={imageSrc}
-        alt={`${title} — photo produit`}
-        width={600}
-        height={600}
-        unoptimized
-        className="aspect-square w-full rounded-2xl object-cover"
-      />
-      <div className="mt-4 flex items-start justify-between gap-4">
-        <div>
-          <h3 className="font-bodoni text-xl" style={{ color: "#C4A092" }}>{title}</h3>
-          <p className="font-nunito text-sm opacity-80" style={{ color: "#333333" }}>
-            {brand ? brand : "Soin corps • 200 ml"}
-          </p>
-        </div>
-        {tag ? (
-          <span
-            className="inline-block rounded-full px-3 py-1 text-sm font-nunito"
-            style={{ backgroundColor: "#FAF0E6", border: "1px solid #EBC8B2", color: "#333333" }}
-          >
-            {tag}
-          </span>
-        ) : null}
-      </div>
-      <div className="mt-4 flex items-center justify-between">
-        <span className="font-bodoni text-xl" style={{ color: "#333333" }}>{price}</span>
-        <div className="flex items-center gap-2">
-          <Link
-            href={detailsHref || "/offers"}
-            className="rounded-2xl border px-5 py-3 transition"
-            style={{ borderColor: "#C4A092", color: "#C4A092", backgroundColor: "transparent" }}
-            prefetch
-          >
-            Détails
-          </Link>
-          {href ? (
-            <Link
-              href={href}
-              className="rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
-              style={{ backgroundColor: "#C4A092" }}
-              rel="nofollow sponsored noopener"
-              target="_blank"
-            >
-              Voir l’offre
-            </Link>
-          ) : (
-            <Link
-              href="/offers"
-              className="rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
-              style={{ backgroundColor: "#C4A092" }}
-            >
-              Voir l’offre
-            </Link>
-          )}
-        </div>
-      </div>
-    </article>
-  );
 }
-
