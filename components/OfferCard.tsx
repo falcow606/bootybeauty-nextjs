@@ -1,3 +1,4 @@
+// components/OfferCard.tsx
 import Image from "next/image";
 import Link from "next/link";
 import AffiliateLink from "@/components/AffiliateLink";
@@ -33,14 +34,14 @@ function displayPrice(p?: string | number): string {
   }
   const num = Number(String(p).replace(",", "."));
   return Number.isFinite(num)
-    ? num.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €
+    ? num.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €"
     : String(p);
 }
 
 export default function OfferCard({
   offer,
   index,
-  _originSlug, // (évite le warning no-unused-vars)
+  _originSlug, // éviter le warning no-unused-vars
 }: {
   offer: CardOffer;
   index?: number;
