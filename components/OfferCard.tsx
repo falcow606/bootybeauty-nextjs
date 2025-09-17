@@ -33,18 +33,18 @@ function displayPrice(p?: string | number): string {
   }
   const num = Number(String(p).replace(",", "."));
   return Number.isFinite(num)
-    ? num.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €"
+    ? num.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €
     : String(p);
 }
 
 export default function OfferCard({
   offer,
   index,
-  originSlug,
+  _originSlug, // (évite le warning no-unused-vars)
 }: {
   offer: CardOffer;
   index?: number;
-  originSlug?: string;
+  _originSlug?: string;
 }) {
   const title = offer.title || "Produit";
   const brand = offer.brand || offer.merchant || "";

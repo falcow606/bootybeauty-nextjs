@@ -74,6 +74,37 @@ function displayPrice(p?: string | number): string {
     : String(p);
 }
 
+function readSchema(
+  schema: Record<string, unknown> | undefined
+): {
+  subtitle?: string;
+  intro?: string;
+  pros?: string[];
+  cons?: string[];
+  howTo?: string;
+  rating?: number;
+} {
+  if (!schema || typeof schema !== "object") return {};
+  const s = schema as Record<string, unknown>;
+  const getStr = (k: string): string | undefined => (typeof s[k] === "string" ? (s[k] as string) : undefined);
+  const getArr = (k: string): string[] | undefined => {
+    const v = s[k];
+    if (Array.isArray(v)) return v.filter(x => typeof x === "string") as string[];
+    if (typeof v === "string") return v.split("\n").map(x => x.replace(/^[•\-\s]+/, "").trim()).filter(Boolean);
+    return undefined;
+  };
+  const getNum = (k: string): number | undefined => (typeof s[k] === "number" ? (s[k] as number) : undefined);
+
+  return {
+    subtitle: getStr("subtitle") ?? getStr("subTitle"),
+    intro: getStr("intro"),
+    pros: getArr("pros"),
+    cons: getArr("cons"),
+    howTo: getStr("howTo") ?? getStr("howto"),
+    rating: getNum("rating"),
+  };
+}
+
 /* --- rating (abricots SVG) + nombre --- */
 
 function ApricotIcon({ filled = 1 }: { filled?: 0 | 0.5 | 1 }) {
@@ -131,9 +162,18 @@ export default async function ProductPage({ params }: PageProps) {
 
   const title = content?.title || offer?.title || slug.replace(/-/g, " ");
   const brand = offer?.brand || offer?.merchant || "";
-  const heroImg = content?.heroImage || offer?.imageUrl || "/images/product-placeholder.jpg";
+  const heroImg = (content as { image?: string } | undefined)?.image || offer?.imageUrl || "/images/product-placeholder.jpg";
   const price = displayPrice(offer?.price);
-  const rating = typeof content?.rating === "number" ? content.rating : undefined;
+
+  // Lire les champs éditoriaux depuis content.schema si présent
+  const schema = (content as { schema?: Record<string, unknown> } | undefined)?.schema;
+  const meta = readSchema(schema);
+  const subtitle = meta.subtitle;
+  const intro = meta.intro;
+  const pros = meta.pros;
+  const cons = meta.cons;
+  const howTo = meta.howTo;
+  const rating = meta.rating;
 
   // Produits liés (3 max)
   const related: CardOffer[] = offers.filter(o => !bySlug(o)).slice(0, 3);
@@ -162,11 +202,10 @@ export default async function ProductPage({ params }: PageProps) {
             {title}{brand ? <span className="opacity-60"> — {brand}</span> : null}
           </h1>
 
-          {content?.subtitle ? (
-            <p className={`${nunito.className} mt-2 opacity-80`}>{content.subtitle}</p>
+          {subtitle ? (
+            <p className={`${nunito.className} mt-2 opacity-80`}>{subtitle}</p>
           ) : null}
 
-          {/* note (abricots + 4/5) + prix éventuel */}
           <div className="mt-3 flex items-center gap-4">
             {typeof rating === "number" && (
               <div className="flex items-center gap-2">
@@ -177,7 +216,6 @@ export default async function ProductPage({ params }: PageProps) {
             {price ? <span className={`${bodoni.className} text-lg`} style={{ color: "#333" }}>{price}</span> : null}
           </div>
 
-          {/* CTA demandé : Voir toutes les offres */}
           <div className="mt-5">
             <Link
               href="/offers"
@@ -188,20 +226,19 @@ export default async function ProductPage({ params }: PageProps) {
             </Link>
           </div>
 
-          {/* Intro */}
-          {content?.intro ? (
+          {intro ? (
             <div className={`${nunito.className} prose prose-sm mt-6 max-w-none`}>
-              <p style={{ color: "#333" }}>{content.intro}</p>
+              <p style={{ color: "#333" }}>{intro}</p>
             </div>
           ) : null}
 
           {/* Pros sous l’intro */}
-          {content?.pros ? (
+          {pros && pros.length ? (
             <div className="mt-6 rounded-2xl border p-4" style={{ borderColor: "#EBC8B2" }}>
               <h3 className={`${bodoni.className} text-xl`} style={{ color: "#C4A092" }}>Pourquoi on aime</h3>
               <ul className={`${nunito.className} mt-2 list-disc pl-5`}>
-                {content.pros.split("\n").map((li, i) => (
-                  <li key={i} className="opacity-90">{li.replace(/^[•\-\s]+/, "")}</li>
+                {pros.map((li, i) => (
+                  <li key={i} className="opacity-90">{li}</li>
                 ))}
               </ul>
             </div>
@@ -211,21 +248,21 @@ export default async function ProductPage({ params }: PageProps) {
 
       {/* En dessous : “À noter” + “Comment l’utiliser” côte à côte */}
       <div className="mt-8 grid gap-6 md:grid-cols-2">
-        {content?.cons ? (
+        {cons && cons.length ? (
           <div className="rounded-2xl border p-4" style={{ borderColor: "#EBC8B2" }}>
             <h3 className={`${bodoni.className} text-xl`} style={{ color: "#C4A092" }}>À noter</h3>
             <ul className={`${nunito.className} mt-2 list-disc pl-5`}>
-              {content.cons.split("\n").map((li, i) => (
-                <li key={i} className="opacity-90">{li.replace(/^[•\-\s]+/, "")}</li>
+              {cons.map((li, i) => (
+                <li key={i} className="opacity-90">{li}</li>
               ))}
             </ul>
           </div>
         ) : null}
 
-        {content?.howTo ? (
+        {howTo ? (
           <div className="rounded-2xl border p-4" style={{ borderColor: "#EBC8B2" }}>
             <h3 className={`${bodoni.className} text-xl`} style={{ color: "#C4A092" }}>Comment l’utiliser</h3>
-            <p className={`${nunito.className} mt-2 opacity-90`}>{content.howTo}</p>
+            <p className={`${nunito.className} mt-2 opacity-90`}>{howTo}</p>
           </div>
         ) : null}
       </div>
