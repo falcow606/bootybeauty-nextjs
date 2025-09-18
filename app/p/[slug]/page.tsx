@@ -6,14 +6,12 @@ import Link from "next/link";
 import { Bodoni_Moda, Nunito_Sans } from "next/font/google";
 import OfferCard from "@/components/OfferCard";
 
-// Polices
 const bodoni = Bodoni_Moda({ subsets: ["latin"], weight: ["400", "600", "700"] });
 const nunito = Nunito_Sans({ subsets: ["latin"], weight: ["300", "400", "600", "700"] });
 
-// ---------- Types utilitaires ----------
+// ---------- Types ----------
 type UnknownRecord = Record<string, unknown>;
 type Params = { slug: string };
-type MaybePromise<T> = T | Promise<T>;
 
 type CardOffer = {
   productId?: string;
@@ -28,7 +26,19 @@ type CardOffer = {
   category?: string;
 };
 
-// ---------- Petits helpers sûrs ----------
+type Content = {
+  slug: string;
+  title: string;
+  subtitle?: string;
+  hero?: string;
+  intro?: string;
+  pros?: string[];
+  cons?: string[];
+  howto?: string;
+  rating?: number;
+};
+
+// ---------- Helpers ----------
 function slugify(input: string): string {
   const s = input
     .normalize("NFD")
@@ -40,14 +50,15 @@ function slugify(input: string): string {
 }
 
 function getStr(obj: UnknownRecord, keys: string[]): string | undefined {
-  for (const k of keys) {
-    if (k in obj) {
-      const v = obj[k];
+  for (const raw of keys) {
+    // exact
+    if (raw in obj) {
+      const v = obj[raw];
       if (typeof v === "string" && v.trim()) return v.trim();
       if (typeof v === "number") return String(v);
     }
-    // correspondance tolérante "Hero " => "Hero"
-    const hit = Object.keys(obj).find((kk) => kk.trim().toLowerCase() === k.trim().toLowerCase());
+    // tolérant "Hero " => "Hero"
+    const hit = Object.keys(obj).find((k) => k.trim().toLowerCase() === raw.trim().toLowerCase());
     if (hit) {
       const v = obj[hit];
       if (typeof v === "string" && v.trim()) return v.trim();
@@ -67,15 +78,7 @@ function euro(v: string | number | null | undefined): string {
   return num.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
 }
 
-function truthy(v: unknown): boolean {
-  if (typeof v === "boolean") return v;
-  if (typeof v === "number") return v > 0;
-  if (v == null) return false;
-  const s = String(v).trim().toLowerCase();
-  return ["1", "true", "yes", "y", "oui", "ok"].includes(s);
-}
-
-// CSV parser simple (gère guillemets)
+// CSV utils (sûr pour guillemets)
 function splitCSVLine(line: string): string[] {
   const out: string[] = [];
   let cur = "";
@@ -84,7 +87,7 @@ function splitCSVLine(line: string): string[] {
     const c = line[i];
     if (c === '"') {
       if (quoted && line[i + 1] === '"') {
-        cur += '"'; // échappement ""
+        cur += '"';
         i++;
       } else {
         quoted = !quoted;
@@ -116,7 +119,11 @@ function parseCSV(text: string): UnknownRecord[] {
   return items;
 }
 
-// ---------- Chargements de données ----------
+function isPromise(v: unknown): v is Promise<unknown> {
+  return typeof v === "object" && v !== null && "then" in (v as Record<string, unknown>);
+}
+
+// ---------- Data loaders ----------
 async function loadOffers(): Promise<CardOffer[]> {
   const base =
     (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "") ||
@@ -137,7 +144,6 @@ async function loadOffers(): Promise<CardOffer[]> {
   const res = await fetch(url, init);
   if (!res.ok) return [];
 
-  // Le webhook N8N renvoie un tableau d'objets
   const raw = (await res.json()) as UnknownRecord[];
   const out: CardOffer[] = raw.map((r) => {
     const title = getStr(r, ["title", "Title"]) ?? "";
@@ -172,18 +178,6 @@ async function loadOffers(): Promise<CardOffer[]> {
   return out;
 }
 
-type Content = {
-  slug: string;
-  title: string;
-  subtitle?: string;
-  hero?: string;
-  intro?: string;
-  pros?: string[];
-  cons?: string[];
-  howto?: string;
-  rating?: number;
-};
-
 async function loadContent(): Promise<Content[]> {
   const csvUrl = process.env.SHEETS_CONTENT_CSV;
   if (!csvUrl) return [];
@@ -197,7 +191,6 @@ async function loadContent(): Promise<Content[]> {
     const noteStr = getStr(r, ["Note globale (sur 5)", "Note", "Rating"]);
     const rating = noteStr ? Number(String(noteStr).replace(",", ".")) : undefined;
 
-    // Pros/Cons : séparés par des sauts de lignes
     const prosRaw = getStr(r, ["Pros"]) ?? "";
     const consRaw = getStr(r, ["Cons"]) ?? "";
     const pros = prosRaw ? prosRaw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : [];
@@ -218,9 +211,9 @@ async function loadContent(): Promise<Content[]> {
   return items;
 }
 
-// ---------- Apricots ----------
+// ---------- Abricots ----------
 function Apricots({ value = 0 }: { value?: number }) {
-  const filled = Math.max(0, Math.min(5, Math.floor(value))); // 4.5 => 4
+  const filled = Math.max(0, Math.min(5, Math.floor(value)));
   const arr = Array.from({ length: 5 }, (_, i) => (i < filled ? "full" : "empty"));
   return (
     <span aria-label={`${filled}/5`} title={`${filled}/5`} className="inline-flex gap-1 align-middle">
@@ -236,13 +229,19 @@ function Apricots({ value = 0 }: { value?: number }) {
 // =======================================================
 // ===============   PAGE PRODUIT   ======================
 // =======================================================
-export default async function ProductPage({
-  params,
-}: {
-  params: MaybePromise<Params>;
-}) {
-  // Normalise params (objet OU promesse selon Next 15)
-  const { slug } = await Promise.resolve(params);
+
+// NOTE: pas d’annotation PageProps ici (Next 15 peut typer params en Promise).
+export default async function ProductPage(props: unknown) {
+  // Normalise params (objet OU promesse)
+  let slug = "";
+  const p = (props as { params?: unknown }).params;
+  if (isPromise(p)) {
+    const resolved = (await p) as { slug?: unknown };
+    slug = typeof resolved?.slug === "string" ? resolved.slug : "";
+  } else {
+    slug = typeof (p as { slug?: unknown })?.slug === "string" ? (p as { slug: string }).slug : "";
+  }
+  if (!slug) slug = "produit";
 
   // Charge en parallèle
   const [offers, contents] = await Promise.all([loadOffers(), loadContent()]);
@@ -253,28 +252,25 @@ export default async function ProductPage({
   const title = content?.title || offer?.title || slug.replace(/-/g, " ");
   const subtitle = content?.subtitle;
   const brand = offer?.brand || offer?.merchant || "";
-  const heroImg =
-    content?.hero || offer?.imageUrl || "/images/product-placeholder.jpg";
+  const heroImg = content?.hero || offer?.imageUrl || "/images/product-placeholder.jpg";
   const price = euro(offer?.price ?? null);
   const rating = content?.rating ?? undefined;
 
   const affiliateUrl = offer?.affiliateUrl;
   const hasAff = typeof affiliateUrl === "string" && affiliateUrl.trim().length > 0;
 
-  // Produits liés : même catégorie si dispo, sinon 2 autres random
+  // Produits liés : même catégorie si dispo, sinon 2 autres
   const related = offers
     .filter((o) => o.slug !== slug && (o.category && o.category === offer?.category))
     .slice(0, 2);
   const fallbackRelated =
-    related.length > 0
-      ? related
-      : offers.filter((o) => o.slug !== slug).slice(0, 2);
+    related.length > 0 ? related : offers.filter((o) => o.slug !== slug).slice(0, 2);
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-6">
       {/* Ligne principale */}
       <section className="grid gap-8 md:grid-cols-2">
-        {/* Image avec cadre blanc épais */}
+        {/* Image avec épaisse bordure blanche */}
         <div className="rounded-[22px] bg-white p-3 shadow-sm">
           <Image
             src={heroImg}
@@ -289,17 +285,15 @@ export default async function ProductPage({
 
         {/* Titre + meta + CTAs */}
         <div className="flex flex-col">
-          <h1 className={`${bodoni.className} text-3xl md:text-4xl`}>
-            {title}
-          </h1>
+          <h1 className={`${bodoni.className} text-3xl md:text-4xl`}>{title}</h1>
           {subtitle ? (
             <p className={`${nunito.className} mt-1 text-sm opacity-80`}>{subtitle}</p>
           ) : null}
 
-          {/* rating / brand / price */}
+          {/* rating / marque / prix */}
           <div className={`${nunito.className} mt-3 flex flex-wrap items-center gap-3 text-sm`}>
             <Apricots value={rating ?? 0} />
-            {rating ? <span>{Math.floor(rating)}/5</span> : null}
+            {typeof rating === "number" ? <span>{Math.floor(rating)}/5</span> : null}
             {brand ? <span>Marque&nbsp;: {brand}</span> : null}
             {price ? (
               <span className="rounded-full bg-neutral-100 px-2 py-0.5">{price}</span>
@@ -348,7 +342,7 @@ export default async function ProductPage({
         </section>
       ) : null}
 
-      {/* À noter + Comment l'utiliser (côte à côte) */}
+      {/* À noter + Comment l’utiliser (côte à côte) */}
       {(content?.cons?.length ?? 0) > 0 || content?.howto ? (
         <section className="mt-6 grid gap-6 md:grid-cols-2">
           {content?.cons && content.cons.length > 0 ? (
@@ -375,9 +369,7 @@ export default async function ProductPage({
       <section className="mt-10">
         <h2 className={`${bodoni.className} mb-4 text-xl`}>Produits liés</h2>
         {fallbackRelated.length === 0 ? (
-          <p className={`${nunito.className} text-sm opacity-70`}>
-            Aucun autre produit pour le moment.
-          </p>
+          <p className={`${nunito.className} text-sm opacity-70`}>Aucun autre produit pour le moment.</p>
         ) : (
           <div className="grid gap-6 md:grid-cols-2">
             {fallbackRelated.map((o, i) => (
