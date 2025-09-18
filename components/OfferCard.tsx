@@ -33,8 +33,8 @@ function euro(p: number | string | null | undefined): string {
 
 export default function OfferCard({
   offer,
-  index,
-  originSlug,
+  index: _index,
+  originSlug: _originSlug,
 }: {
   offer: CardOffer;
   index?: number;
@@ -50,7 +50,6 @@ export default function OfferCard({
 
   return (
     <article className="group flex flex-col overflow-hidden rounded-3xl bg-white shadow-md ring-1 ring-[#EBC8B2] transition hover:shadow-lg">
-      {/* Cadre blanc autour de l’image */}
       <div className="p-3">
         <div className="overflow-hidden rounded-2xl bg-white ring-1 ring-[#F2E3DA]">
           <Image
