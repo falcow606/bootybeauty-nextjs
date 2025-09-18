@@ -28,7 +28,8 @@ function slugify(s: string) {
     .replace(/^-+|-+$/g,"");
 }
 
-function euro(p?: number | string) {
+// ✅ accepte maintenant null aussi
+function euro(p?: number | string | null) {
   if (p == null || p === "") return "";
   const n = Number(String(p).replace(",", "."));
   return Number.isFinite(n)
@@ -75,7 +76,7 @@ export default async function ProductPage({
   const title = content?.title || offer?.title || slug.replace(/-/g, " ");
   const brand = content?.brand || offer?.brand || offer?.merchant || "";
   const heroImg = content?.image || offer?.imageUrl || "/images/product-placeholder.jpg";
-  const price = euro(offer?.price);
+  const price = euro(offer?.price); // <- OK maintenant
 
   const affiliateUrl = offer?.affiliateUrl;
   const hasAff = typeof affiliateUrl === "string" && affiliateUrl.trim().length > 0;
