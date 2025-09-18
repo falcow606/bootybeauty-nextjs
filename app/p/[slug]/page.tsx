@@ -22,7 +22,10 @@ type ContentPayload = {
 };
 
 function slugify(s: string) {
-  return s.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"");
+  return s
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .toLowerCase().replace(/[^a-z0-9]+/g,"-")
+    .replace(/^-+|-+$/g,"");
 }
 
 function euro(p?: number | string) {
@@ -52,8 +55,13 @@ async function fetchOffers(): Promise<CardOffer[]> {
   return (await r.json()) as CardOffer[];
 }
 
-export default async function ProductPage({ params }: { params: { slug: string } }) {
-  const slug = params.slug;
+// ✅ IMPORTANT (Next 15) : params est un Promise
+export default async function ProductPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
 
   // OFFRES
   const offers = await fetchOffers();
@@ -61,7 +69,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
     offers.find((o) => o.slug === slug) ||
     offers.find((o) => slugify(o.title || "") === slug);
 
-  // CONTENU
+  // CONTENU (Google Sheet)
   const content = (await getContentBySlug(slug)) as ContentPayload | null;
 
   const title = content?.title || offer?.title || slug.replace(/-/g, " ");
@@ -72,7 +80,7 @@ export default async function ProductPage({ params }: { params: { slug: string }
   const affiliateUrl = offer?.affiliateUrl;
   const hasAff = typeof affiliateUrl === "string" && affiliateUrl.trim().length > 0;
 
-  // Fallbacks texte
+  // Fallbacks texte si pas de HTML généré
   const schema = content?.schema;
   const intro = pickAny(schema, ["intro", "introduction"]);
   const pros = pickAny(schema, ["pros", "pourquoi on aime"]);
