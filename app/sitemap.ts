@@ -1,24 +1,25 @@
 // app/sitemap.ts
-import type { MetadataRoute } from 'next';
-import { getFeatured } from '@/lib/sheets';
+import type { MetadataRoute } from "next";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://bootybeauty-nextjs.vercel.app';
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://bootybeauty-nextjs.vercel.app";
 
-export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const featured = await getFeatured();
-  const now = new Date();
+export default function sitemap(): MetadataRoute.Sitemap {
+  const now = new Date().toISOString();
 
-  const pages: MetadataRoute.Sitemap = [
-    { url: `${siteUrl}/`, lastModified: now },
-    { url: `${siteUrl}/offers`, lastModified: now },
-    { url: `${siteUrl}/top-10/booty-beauty-2025`, lastModified: now },
-    { url: `${siteUrl}/mentions-legales`, lastModified: now },  // ✅
-    { url: `${siteUrl}/disclosure`, lastModified: now },        // ✅
-    ...featured.map((f) => ({
-      url: `${siteUrl}/p/${f.slug}`,
-      lastModified: now,
-    })),
+  const urls = [
+    "/",
+    "/offers",
+    "/blog",
+    "/about",
+    "/mentions-legales",
+    "/disclosure",
+    "/top-10/booty-beauty-2025",
   ];
 
-  return pages;
+  return urls.map((path) => ({
+    url: `${siteUrl}${path}`,
+    lastModified: now,
+    changeFrequency: "weekly",
+    priority: path === "/" ? 1 : 0.6,
+  }));
 }
