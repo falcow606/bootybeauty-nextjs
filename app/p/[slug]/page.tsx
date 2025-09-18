@@ -1,35 +1,52 @@
-export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 import Image from "next/image";
 import Link from "next/link";
-import Papa from "papaparse";
 import { Bodoni_Moda, Nunito_Sans } from "next/font/google";
+import OfferCard from "@/components/OfferCard";
 
-const bodoni = Bodoni_Moda({ subsets: ["latin"], style: ["normal"], weight: ["400", "600", "700"] });
+// Polices
+const bodoni = Bodoni_Moda({ subsets: ["latin"], weight: ["400", "600", "700"] });
 const nunito = Nunito_Sans({ subsets: ["latin"], weight: ["300", "400", "600", "700"] });
 
-/* ---------- Helpers ---------- */
+// ---------- Types utilitaires ----------
+type UnknownRecord = Record<string, unknown>;
+type Params = { slug: string };
+type MaybePromise<T> = T | Promise<T>;
 
-type Rec = Record<string, unknown>;
+type CardOffer = {
+  productId?: string;
+  merchant?: string;
+  title?: string;
+  brand?: string;
+  price?: number | string | null;
+  availability?: string;
+  affiliateUrl?: string;
+  imageUrl?: string;
+  slug?: string;
+  category?: string;
+};
 
+// ---------- Petits helpers sûrs ----------
 function slugify(input: string): string {
-  return input
+  const s = input
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "produit";
+    .replace(/^-+|-+$/g, "");
+  return s || "produit";
 }
 
-function pick(obj: Rec | undefined, keys: string[]): string | undefined {
-  if (!obj) return undefined;
+function getStr(obj: UnknownRecord, keys: string[]): string | undefined {
   for (const k of keys) {
     if (k in obj) {
       const v = obj[k];
       if (typeof v === "string" && v.trim()) return v.trim();
       if (typeof v === "number") return String(v);
     }
+    // correspondance tolérante "Hero " => "Hero"
     const hit = Object.keys(obj).find((kk) => kk.trim().toLowerCase() === k.trim().toLowerCase());
     if (hit) {
       const v = obj[hit];
@@ -40,346 +57,332 @@ function pick(obj: Rec | undefined, keys: string[]): string | undefined {
   return undefined;
 }
 
-function bullets(src?: string): string[] {
-  if (!src) return [];
-  return src
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+function euro(v: string | number | null | undefined): string {
+  if (v == null) return "";
+  const num =
+    typeof v === "number"
+      ? v
+      : Number(String(v).replace(/\s/g, "").replace("€", "").replace(",", "."));
+  if (!Number.isFinite(num)) return String(v);
+  return num.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
 }
 
-function euro(v: string | number | undefined): string | undefined {
-  if (v === undefined) return undefined;
-  const num = typeof v === "number" ? v : Number(String(v).replace(/[^\d.,-]/g, "").replace(",", "."));
-  if (!Number.isFinite(num)) return undefined;
-  return num.toLocaleString("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: 2 });
+function truthy(v: unknown): boolean {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v > 0;
+  if (v == null) return false;
+  const s = String(v).trim().toLowerCase();
+  return ["1", "true", "yes", "y", "oui", "ok"].includes(s);
 }
 
-/* ---------- Types ---------- */
+// CSV parser simple (gère guillemets)
+function splitCSVLine(line: string): string[] {
+  const out: string[] = [];
+  let cur = "";
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') {
+      if (quoted && line[i + 1] === '"') {
+        cur += '"'; // échappement ""
+        i++;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (c === "," && !quoted) {
+      out.push(cur);
+      cur = "";
+    } else {
+      cur += c;
+    }
+  }
+  out.push(cur);
+  return out;
+}
+function parseCSV(text: string): UnknownRecord[] {
+  const rows = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const cleaned = rows.filter((r) => r.trim().length > 0);
+  if (cleaned.length === 0) return [];
+  const header = splitCSVLine(cleaned[0]).map((h) => h.trim());
+  const items: UnknownRecord[] = [];
+  for (let i = 1; i < cleaned.length; i++) {
+    const vals = splitCSVLine(cleaned[i]);
+    const row: UnknownRecord = {};
+    header.forEach((h, idx) => {
+      row[h] = (vals[idx] ?? "").trim();
+    });
+    items.push(row);
+  }
+  return items;
+}
 
-type Offer = {
-  productId: string;
-  merchant?: string;
-  price?: number;
-  affiliateUrl?: string;
-  imageUrl?: string;
-  title?: string;
-  brand?: string;
-};
-
-type Content = {
-  slug: string;
-  title?: string;
-  subtitle?: string;
-  image?: string;
-  intro?: string;
-  pros?: string[];
-  cons?: string[];
-  howto?: string[];
-  rating?: number;
-};
-
-/* ---------- Data fetch ---------- */
-
-async function fetchOffers(): Promise<Offer[]> {
+// ---------- Chargements de données ----------
+async function loadOffers(): Promise<CardOffer[]> {
   const base =
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
-    "https://www.bootyandcutie.com";
-  const url = `${base}/api/offers`;
-  const res = await fetch(url, { cache: "no-store" });
+    (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "") ||
+    "https://bootybeauty-nextjs.vercel.app";
+
+  const url =
+    process.env.N8N_OFFERS_API ||
+    (typeof window === "undefined" ? `${base}/api/offers` : "/api/offers");
+
+  const headers: Record<string, string> = {};
+  if (process.env.N8N_OFFERS_KEY) headers["x-api-key"] = String(process.env.N8N_OFFERS_KEY);
+
+  const init: RequestInit & { next?: { revalidate?: number } } =
+    process.env.VERCEL_ENV === "preview" || process.env.NODE_ENV !== "production"
+      ? { headers, cache: "no-store" }
+      : { headers, next: { revalidate: 900 } };
+
+  const res = await fetch(url, init);
   if (!res.ok) return [];
-  const json = (await res.json()) as unknown;
-  if (!Array.isArray(json)) return [];
-  return (json as Rec[]).map((r) => ({
-    productId: String(pick(r, ["productId", "Product_ID", "ID"]) || ""),
-    merchant: pick(r, ["merchant", "Marchand"]),
-    price: Number(pick(r, ["price", "Prix (€)"])?.replace(",", ".")),
-    affiliateUrl:
-      pick(r, [
+
+  // Le webhook N8N renvoie un tableau d'objets
+  const raw = (await res.json()) as UnknownRecord[];
+  const out: CardOffer[] = raw.map((r) => {
+    const title = getStr(r, ["title", "Title"]) ?? "";
+    const affiliate =
+      getStr(r, [
         "affiliateUrl",
         "Affiliate_URL",
         "FinalURL",
         "finalUrl",
+        "URL",
         "Product_URL",
         "Amazon_URL",
-        "URL",
-        "url",
-        "link",
-      ]) || undefined,
-    imageUrl: pick(r, ["imageUrl", "Image_URL", "Image", "Hero"]),
-    title: pick(r, ["title", "Title", "Nom"]),
-    brand: pick(r, ["brand", "Marque", "Merchant", "Marchand"]),
-  }));
-}
-
-async function fetchContent(): Promise<Content[]> {
-  const src = process.env.SHEETS_CONTENT_CSV;
-  if (!src) return [];
-  const res = await fetch(src, { cache: "no-store" });
-  if (!res.ok) return [];
-  const csv = await res.text();
-  const parsed = Papa.parse(csv, {
-    header: true,
-    skipEmptyLines: true,
-    dynamicTyping: false,
+      ]) ?? "";
+    const slug = slugify(title);
+    const priceStr = getStr(r, ["price", "Prix (€)"]);
+    const image =
+      getStr(r, ["imageUrl", "Image_URL", "Image Url", "Image"]) ??
+      "/images/product-placeholder.jpg";
+    return {
+      productId: getStr(r, ["productId", "Product_ID", "ID"]),
+      merchant: getStr(r, ["merchant", "Marchand"]),
+      title,
+      brand: getStr(r, ["brand", "Marque"]),
+      price: priceStr ?? null,
+      availability: getStr(r, ["availability", "Disponibilité"]),
+      affiliateUrl: affiliate,
+      imageUrl: image,
+      slug,
+      category: getStr(r, ["Catégorie", "category"]),
+    };
   });
-  if (!parsed.data || !Array.isArray(parsed.data)) return [];
-
-  return (parsed.data as Rec[]).map((row) => ({
-    slug: slugify(pick(row, ["Slug"]) || ""),
-    title: pick(row, ["Title", "Titre"]),
-    subtitle: pick(row, ["Subtitle", "Sous-titre"]),
-    image: pick(row, ["Hero", "Hero_Image", "Image", "Hero URL"]),
-    intro: pick(row, ["Intro", "En bref"]),
-    pros: bullets(pick(row, ["Pros", "Pourquoi on aime"])),
-    cons: bullets(pick(row, ["Cons", "À noter"])),
-    howto: bullets(pick(row, ["How to", "HowTo", "Comment l’utiliser"])),
-    rating: (() => {
-      const raw = pick(row, ["Note globale (sur 5)", "Note", "Rating"]);
-      if (!raw) return undefined;
-      const num = Number(String(raw).replace(",", "."));
-      return Number.isFinite(num) ? num : undefined;
-    })(),
-  }));
+  return out;
 }
 
-/* ---------- UI bits ---------- */
+type Content = {
+  slug: string;
+  title: string;
+  subtitle?: string;
+  hero?: string;
+  intro?: string;
+  pros?: string[];
+  cons?: string[];
+  howto?: string;
+  rating?: number;
+};
 
-function RatingApricots({ value = 0, outOf = 5 }: { value?: number; outOf?: number }) {
-  const full = Math.floor(Math.max(0, Math.min(value, outOf)));
-  const empty = Math.max(0, outOf - full);
+async function loadContent(): Promise<Content[]> {
+  const csvUrl = process.env.SHEETS_CONTENT_CSV;
+  if (!csvUrl) return [];
+  const res = await fetch(csvUrl, { cache: "no-store" });
+  if (!res.ok) return [];
+  const text = await res.text();
+  const rows = parseCSV(text);
+  const items: Content[] = rows.map((r) => {
+    const slug =
+      getStr(r, ["Slug"]) || slugify(getStr(r, ["Title"]) ?? getStr(r, ["Nom"]) ?? "produit");
+    const noteStr = getStr(r, ["Note globale (sur 5)", "Note", "Rating"]);
+    const rating = noteStr ? Number(String(noteStr).replace(",", ".")) : undefined;
+
+    // Pros/Cons : séparés par des sauts de lignes
+    const prosRaw = getStr(r, ["Pros"]) ?? "";
+    const consRaw = getStr(r, ["Cons"]) ?? "";
+    const pros = prosRaw ? prosRaw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : [];
+    const cons = consRaw ? consRaw.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : [];
+
+    return {
+      slug,
+      title: getStr(r, ["Title", "Nom"]) ?? "Produit",
+      subtitle: getStr(r, ["Subtitle"]),
+      hero: getStr(r, ["Hero", "Image", "Hero_Image", "Hero URL"]),
+      intro: getStr(r, ["Intro", "Description"]),
+      pros,
+      cons,
+      howto: getStr(r, ["How to", "HowTo", "Comment l’utiliser", "Comment l'utiliser"]),
+      rating,
+    };
+  });
+  return items;
+}
+
+// ---------- Apricots ----------
+function Apricots({ value = 0 }: { value?: number }) {
+  const filled = Math.max(0, Math.min(5, Math.floor(value))); // 4.5 => 4
+  const arr = Array.from({ length: 5 }, (_, i) => (i < filled ? "full" : "empty"));
   return (
-    <span className="inline-flex items-center gap-1 align-middle">
-      {Array.from({ length: full }).map((_, i) => (
-        <span key={`f-${i}`} aria-hidden>
-          🧡
-        </span>
-      ))}
-      {Array.from({ length: empty }).map((_, i) => (
-        <span key={`e-${i}`} aria-hidden style={{ opacity: 0.3 }}>
-          🧡
+    <span aria-label={`${filled}/5`} title={`${filled}/5`} className="inline-flex gap-1 align-middle">
+      {arr.map((t, idx) => (
+        <span key={idx} className="text-lg leading-none" aria-hidden="true">
+          {t === "full" ? "🍑" : "🥭"}
         </span>
       ))}
     </span>
   );
 }
 
-function Box({ children, className = "" }: React.PropsWithChildren<{ className?: string }>) {
-  return (
-    <div
-      className={`rounded-3xl border border-[#EBD3C8] bg-[#F7ECE4]/60 p-6 ${className}`}
-    >
-      {children}
-    </div>
-  );
-}
+// =======================================================
+// ===============   PAGE PRODUIT   ======================
+// =======================================================
+export default async function ProductPage({
+  params,
+}: {
+  params: MaybePromise<Params>;
+}) {
+  // Normalise params (objet OU promesse selon Next 15)
+  const { slug } = await Promise.resolve(params);
 
-/* ---------- Page ---------- */
+  // Charge en parallèle
+  const [offers, contents] = await Promise.all([loadOffers(), loadContent()]);
 
-export default async function Page({ params }: { params: { slug: string } }) {
-  const slug = params.slug;
-
-  const [offers, contents] = await Promise.all([fetchOffers(), fetchContent()]);
-  const offer = offers.find((o) => slugify(o.title || "") === slug);
-  const content = contents.find((c) => c.slug === slug);
+  const offer = offers.find((o) => o.slug === slug) ?? null;
+  const content = contents.find((c) => c.slug === slug) ?? null;
 
   const title = content?.title || offer?.title || slug.replace(/-/g, " ");
-  const subtitle = content?.subtitle || "";
+  const subtitle = content?.subtitle;
   const brand = offer?.brand || offer?.merchant || "";
   const heroImg =
-    content?.image || offer?.imageUrl || "/images/product-placeholder.jpg";
-  const priceLabel = euro(offer?.price);
-  const rating = content?.rating;
+    content?.hero || offer?.imageUrl || "/images/product-placeholder.jpg";
+  const price = euro(offer?.price ?? null);
+  const rating = content?.rating ?? undefined;
 
   const affiliateUrl = offer?.affiliateUrl;
-  const hasAff = Boolean(affiliateUrl && affiliateUrl.trim().length > 0);
+  const hasAff = typeof affiliateUrl === "string" && affiliateUrl.trim().length > 0;
 
-  /* Produits liés simples : autres offres (max 2) */
+  // Produits liés : même catégorie si dispo, sinon 2 autres random
   const related = offers
-    .filter((o) => slugify(o.title || "") !== slug)
+    .filter((o) => o.slug !== slug && (o.category && o.category === offer?.category))
     .slice(0, 2);
+  const fallbackRelated =
+    related.length > 0
+      ? related
+      : offers.filter((o) => o.slug !== slug).slice(0, 2);
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-6">
-      {/* HERO: image gauche (bordure blanche), contenu droite */}
-      <section className="grid grid-cols-1 gap-8 md:grid-cols-2">
-        {/* Image encadrée (épaisse bordure blanche) */}
-        <div className="rounded-[28px] bg-white p-4 shadow-sm">
+      {/* Ligne principale */}
+      <section className="grid gap-8 md:grid-cols-2">
+        {/* Image avec cadre blanc épais */}
+        <div className="rounded-[22px] bg-white p-3 shadow-sm">
           <Image
             src={heroImg}
             alt={title}
             width={1200}
             height={1200}
+            className="h-auto w-full rounded-[18px] object-cover"
             unoptimized
-            className="h-auto w-full rounded-2xl object-contain"
             priority
           />
         </div>
 
-        {/* Colonne droite */}
-        <div className="flex flex-col gap-4">
-          <h1
-            className={`${bodoni.className} text-3xl leading-tight md:text-[34px]`}
-            style={{ color: "#2E2A27" }}
-          >
+        {/* Titre + meta + CTAs */}
+        <div className="flex flex-col">
+          <h1 className={`${bodoni.className} text-3xl md:text-4xl`}>
             {title}
           </h1>
-
           {subtitle ? (
-            <p className={`${nunito.className} text-sm opacity-80`} style={{ color: "#2E2A27" }}>
-              {subtitle}
-            </p>
+            <p className={`${nunito.className} mt-1 text-sm opacity-80`}>{subtitle}</p>
           ) : null}
 
-          {/* Ligne note + marque + prix */}
-          <div className="flex flex-wrap items-center gap-3 text-sm">
-            {typeof rating === "number" ? (
-              <>
-                <RatingApricots value={rating} />
-                <span className="opacity-80">{rating}/5</span>
-              </>
-            ) : null}
-            {brand ? <span className="opacity-80">Marque : {brand}</span> : null}
-            {priceLabel ? (
-              <span className="rounded-full bg-[#F1E5DE] px-2 py-1">{priceLabel}</span>
+          {/* rating / brand / price */}
+          <div className={`${nunito.className} mt-3 flex flex-wrap items-center gap-3 text-sm`}>
+            <Apricots value={rating ?? 0} />
+            {rating ? <span>{Math.floor(rating)}/5</span> : null}
+            {brand ? <span>Marque&nbsp;: {brand}</span> : null}
+            {price ? (
+              <span className="rounded-full bg-neutral-100 px-2 py-0.5">{price}</span>
             ) : null}
           </div>
 
-          {/* CTA */}
-          <div className="mt-1 flex items-center gap-3">
+          {/* CTAs */}
+          <div className="mt-4 flex items-center gap-3">
             {hasAff ? (
               <Link
-                href={affiliateUrl as string}
+                href={affiliateUrl!}
                 target="_blank"
                 rel="nofollow sponsored noopener"
-                className="rounded-2xl bg-[#C4A092] px-5 py-3 text-white shadow-sm hover:opacity-90"
+                className="rounded-2xl bg-[#C4A092] px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
               >
                 Voir l’offre
               </Link>
-            ) : (
-              <Link
-                href="/offers"
-                className="rounded-2xl bg-[#C4A092] px-5 py-3 text-white shadow-sm hover:opacity-90"
-              >
-                Voir l’offre
-              </Link>
-            )}
+            ) : null}
             <Link
               href="/offers"
-              className="rounded-2xl border border-[#C4A092] px-5 py-3 text-[#C4A092] hover:opacity-90"
+              className="rounded-2xl border border-[#C4A092] px-5 py-3 text-[#C4A092] transition hover:opacity-90"
             >
               Voir toutes les offres
             </Link>
           </div>
-
-          {/* Intro & Pourquoi on aime — dans la colonne droite */}
-          {content?.intro ? (
-            <div className="mt-2">
-              <h2 className={`${bodoni.className} mb-2 text-lg`} style={{ color: "#2E2A27" }}>
-                En bref
-              </h2>
-              <p className={`${nunito.className} text-sm leading-relaxed opacity-90`}>
-                {content.intro}
-              </p>
-            </div>
-          ) : null}
-
-          {content?.pros?.length ? (
-            <Box className="mt-2">
-              <h3 className={`${bodoni.className} mb-2 text-base`} style={{ color: "#2E2A27" }}>
-                Pourquoi on aime
-              </h3>
-              <ul className="list-disc space-y-2 pl-5 text-sm">
-                {content.pros.map((li, i) => (
-                  <li key={`pro-${i}`}>{li}</li>
-                ))}
-              </ul>
-            </Box>
-          ) : null}
         </div>
       </section>
 
-      {/* Sous le hero : À noter + Comment l’utiliser côte à côte */}
-      {(content?.cons?.length || content?.howto?.length) && (
-        <section className="mt-8 grid gap-6 md:grid-cols-2">
-          {content?.cons?.length ? (
-            <Box>
-              <h3 className={`${bodoni.className} mb-2 text-base`} style={{ color: "#2E2A27" }}>
-                À noter
-              </h3>
-              <ul className="list-disc space-y-2 pl-5 text-sm">
-                {content.cons.map((li, i) => (
-                  <li key={`con-${i}`}>{li}</li>
+      {/* Intro */}
+      {content?.intro ? (
+        <section className={`${nunito.className} mt-8 leading-relaxed`}>
+          <h2 className={`${bodoni.className} mb-2 text-xl`}>En bref</h2>
+          <p>{content.intro}</p>
+        </section>
+      ) : null}
+
+      {/* Pourquoi on aime (sous l'intro, pleine largeur) */}
+      {content?.pros && content.pros.length > 0 ? (
+        <section className="mt-6 rounded-3xl bg-white/50 p-6">
+          <h3 className={`${bodoni.className} mb-2 text-lg`}>Pourquoi on aime</h3>
+          <ul className={`${nunito.className} list-disc pl-6`}>
+            {content.pros.map((p, i) => (
+              <li key={i}>{p}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {/* À noter + Comment l'utiliser (côte à côte) */}
+      {(content?.cons?.length ?? 0) > 0 || content?.howto ? (
+        <section className="mt-6 grid gap-6 md:grid-cols-2">
+          {content?.cons && content.cons.length > 0 ? (
+            <div className="rounded-3xl bg-white/50 p-6">
+              <h3 className={`${bodoni.className} mb-2 text-lg`}>À noter</h3>
+              <ul className={`${nunito.className} list-disc pl-6`}>
+                {content.cons.map((c, i) => (
+                  <li key={i}>{c}</li>
                 ))}
               </ul>
-            </Box>
+            </div>
           ) : null}
 
-          {content?.howto?.length ? (
-            <Box>
-              <h3 className={`${bodoni.className} mb-2 text-base`} style={{ color: "#2E2A27" }}>
-                Comment l’utiliser
-              </h3>
-              <ul className="list-disc space-y-2 pl-5 text-sm">
-                {content.howto.map((li, i) => (
-                  <li key={`how-${i}`}>{li}</li>
-                ))}
-              </ul>
-            </Box>
+          {content?.howto ? (
+            <div className="rounded-3xl bg-white/50 p-6">
+              <h3 className={`${bodoni.className} mb-2 text-lg`}>Comment l’utiliser</h3>
+              <p className={`${nunito.className}`}>{content.howto}</p>
+            </div>
           ) : null}
         </section>
-      )}
+      ) : null}
 
       {/* Produits liés */}
       <section className="mt-10">
-        <h2 className={`${bodoni.className} mb-4 text-xl`} style={{ color: "#2E2A27" }}>
-          Produits liés
-        </h2>
-        {related.length === 0 ? (
-          <p className={`${nunito.className} text-sm opacity-70`}>Aucun autre produit pour le moment.</p>
+        <h2 className={`${bodoni.className} mb-4 text-xl`}>Produits liés</h2>
+        {fallbackRelated.length === 0 ? (
+          <p className={`${nunito.className} text-sm opacity-70`}>
+            Aucun autre produit pour le moment.
+          </p>
         ) : (
           <div className="grid gap-6 md:grid-cols-2">
-            {related.map((o) => {
-              const href = `/p/${slugify(o.title || "")}`;
-              return (
-                <div key={o.productId} className="rounded-3xl bg-white p-4 shadow-sm">
-                  <Image
-                    src={o.imageUrl || "/images/product-placeholder.jpg"}
-                    alt={o.title || ""}
-                    width={800}
-                    height={800}
-                    unoptimized
-                    className="h-auto w-full rounded-2xl object-contain"
-                  />
-                  <div className="mt-3 flex items-center justify-between gap-4">
-                    <div>
-                      <h3 className={`${bodoni.className} text-lg`} style={{ color: "#2E2A27" }}>
-                        {o.title}
-                      </h3>
-                      <p className={`${nunito.className} text-sm opacity-80`}>{o.brand || o.merchant || ""}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Link
-                        href={href}
-                        className="rounded-2xl border border-[#C4A092] px-4 py-2 text-sm text-[#C4A092] hover:opacity-90"
-                      >
-                        Détails
-                      </Link>
-                      {o.affiliateUrl ? (
-                        <Link
-                          href={o.affiliateUrl}
-                          target="_blank"
-                          rel="nofollow sponsored noopener"
-                          className="rounded-2xl bg-[#C4A092] px-4 py-2 text-sm text-white hover:opacity-90"
-                        >
-                          Voir l’offre
-                        </Link>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {fallbackRelated.map((o, i) => (
+              <OfferCard key={o.slug ?? String(i)} offer={o} originSlug={slug} index={i} />
+            ))}
           </div>
         )}
       </section>
