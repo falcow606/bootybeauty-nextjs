@@ -14,6 +14,7 @@ const nunito = Nunito_Sans({ subsets: ["latin"], weight: ["300", "400", "600", "
 
 type UnknownRecord = Record<string, unknown>;
 
+/** Offre telle que renvoyée par /api/offers */
 type Offer = {
   productId?: string | number;
   title?: string;
@@ -24,6 +25,18 @@ type Offer = {
   affiliateUrl?: string;
   slug?: string;
   httpStatus?: number | string;
+};
+
+/** Offre attendue par <OfferCard /> (structure minimale) */
+type CardOffer = {
+  productId?: string;
+  title?: string;
+  brand?: string;
+  merchant?: string;
+  imageUrl?: string;
+  price?: number | string | null;
+  affiliateUrl?: string;
+  slug?: string;
 };
 
 type ContentPayload = {
@@ -112,6 +125,20 @@ async function fetchOffers(): Promise<Offer[]> {
     .filter((o) => String(o.httpStatus || "200") === "200");
 }
 
+/** Mapping sûr -> structure minimale requise par <OfferCard /> */
+function toCardOffer(o: Offer): CardOffer {
+  return {
+    productId: typeof o.productId === "number" ? String(o.productId) : o.productId,
+    title: o.title,
+    brand: o.brand,
+    merchant: o.merchant,
+    imageUrl: o.imageUrl,
+    price: o.price ?? null,
+    affiliateUrl: o.affiliateUrl,
+    slug: o.slug,
+  };
+}
+
 /* -------------------------------- Page --------------------------------- */
 
 export default async function ProductPage({ params }: PageProps) {
@@ -122,10 +149,9 @@ export default async function ProductPage({ params }: PageProps) {
     offers.find((o) => o.slug === slug) ||
     offers.find((o) => (o.title ? slugify(o.title) : "") === slug);
 
-  // Récupération du contenu éditorial
+  // Récupération du contenu éditorial (avec fallback si le titre a changé)
   let contentRaw = (await getContentBySlug(slug)) as UnknownRecord | null;
   if (!contentRaw && offer?.title) {
-    // Fallback de slug si le titre a été modifié dans le Google Sheet
     contentRaw = (await getContentBySlug(slugify(offer.title))) as UnknownRecord | null;
   }
   const content = normalizeContent(contentRaw);
@@ -270,7 +296,7 @@ export default async function ProductPage({ params }: PageProps) {
         {related.length ? (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {related.map((o, i) => (
-              <OfferCard key={`${o.productId}-${i}`} offer={o as any} index={i} originSlug={slug} />
+              <OfferCard key={`${o.productId}-${i}`} offer={toCardOffer(o)} index={i} originSlug={slug} />
             ))}
           </div>
         ) : (
@@ -297,7 +323,6 @@ function ApricotRating({ value = 0 }: { value?: number }) {
 }
 
 function RichBullets({ text }: { text: string }) {
-  // Accepte un bloc avec puces séparées par sauts de ligne, "• ", "-", etc.
   const lines = text
     .split(/\r?\n/)
     .map((l) => l.replace(/^\s*(?:[-•–]\s*)?/, "").trim())
