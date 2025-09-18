@@ -1,35 +1,73 @@
-// app/p/[slug]/page.tsx
-export const revalidate = 1800;
+export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 import Image from "next/image";
 import Link from "next/link";
 import { Bodoni_Moda, Nunito_Sans } from "next/font/google";
-import OfferCard, { type CardOffer } from "@/components/OfferCard";
+import OfferCard from "@/components/OfferCard";
 import { getContentBySlug } from "@/lib/sheets";
 
-const bodoni = Bodoni_Moda({ subsets: ["latin"], style: ["normal"], weight: ["400","600","700"] });
-const nunito = Nunito_Sans({ subsets: ["latin"], weight: ["300","400","600","700"] });
+const bodoni = Bodoni_Moda({ subsets: ["latin"], style: ["normal"], weight: ["400", "600", "700"] });
+const nunito = Nunito_Sans({ subsets: ["latin"], weight: ["300", "400", "600", "700"] });
+
+/* --------------------------- Types utilitaires --------------------------- */
+
+type UnknownRecord = Record<string, unknown>;
+
+type Offer = {
+  productId?: string | number;
+  title?: string;
+  brand?: string;
+  merchant?: string;
+  imageUrl?: string;
+  price?: number | string | null;
+  affiliateUrl?: string;
+  slug?: string;
+  httpStatus?: number | string;
+};
 
 type ContentPayload = {
   slug: string;
   title: string;
-  html?: string;
+  subtitle?: string;
   image?: string;
-  schema?: Record<string, unknown>;
   brand?: string;
+  intro?: string;
+  pros?: string;
+  cons?: string;
+  howTo?: string;
   rating?: number;
 };
 
-function slugify(s: string) {
+type PageProps = { params: Promise<{ slug: string }> };
+
+/* ------------------------------ Helpers -------------------------------- */
+
+function slugify(s: string): string {
   return s
-    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
-    .toLowerCase().replace(/[^a-z0-9]+/g,"-")
-    .replace(/^-+|-+$/g,"");
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
-// ✅ accepte maintenant null aussi
-function euro(p?: number | string | null) {
+function pickStr(obj: UnknownRecord | null | undefined, keys: string[]): string | undefined {
+  if (!obj) return undefined;
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+    if (typeof v === "number") return String(v);
+  }
+  return undefined;
+}
+function pickNum(obj: UnknownRecord | null | undefined, keys: string[]): number | undefined {
+  const s = pickStr(obj, keys);
+  if (s == null) return undefined;
+  const n = Number(String(s).replace(",", "."));
+  return Number.isFinite(n) ? n : undefined;
+}
+function euro(p?: number | string | null): string {
   if (p == null || p === "") return "";
   const n = Number(String(p).replace(",", "."));
   return Number.isFinite(n)
@@ -37,162 +75,239 @@ function euro(p?: number | string | null) {
     : String(p);
 }
 
-function pickAny(obj: Record<string, unknown> | undefined, candidates: string[]) {
-  if (!obj) return undefined;
-  const map = new Map<string, unknown>();
-  for (const [k, v] of Object.entries(obj)) map.set(k.trim().toLowerCase(), v);
-  for (const key of candidates) {
-    const v = map.get(key.trim().toLowerCase());
-    if (typeof v === "string" && v.trim()) return v as string;
-    if (typeof v === "number") return String(v);
-  }
-  return undefined;
+function normalizeContent(raw: UnknownRecord | null): ContentPayload | null {
+  if (!raw) return null;
+  return {
+    slug: pickStr(raw, ["Slug", "slug"]) ?? "",
+    title: pickStr(raw, ["Title", "Titre", "title"]) ?? "",
+    subtitle: pickStr(raw, ["Subtitle", "Sous-titre", "subtitle"]),
+    image: pickStr(raw, ["Hero", "Hero_Image", "Hero URL", "Image_Hero", "Image", "image"]),
+    brand: pickStr(raw, ["Brand", "Marque", "brand"]),
+    intro: pickStr(raw, ["Intro", "Introduction"]),
+    pros: pickStr(raw, ["Pros", "Pourquoi on aime"]),
+    cons: pickStr(raw, ["Cons", "À noter", "A noter"]),
+    howTo: pickStr(raw, ["How to", "HowTo", "Comment l’utiliser", "Comment l'utiliser"]),
+    rating: pickNum(raw, ["Note globale (sur 5)", "Rating", "Note"]),
+  };
 }
 
-async function fetchOffers(): Promise<CardOffer[]> {
+async function fetchOffers(): Promise<Offer[]> {
   const site = process.env.NEXT_PUBLIC_SITE_URL || "https://bootybeauty-nextjs.vercel.app";
-  const r = await fetch(`${site}/api/offers`, { next: { revalidate: 600 } });
-  if (!r.ok) return [];
-  return (await r.json()) as CardOffer[];
+  const res = await fetch(`${site}/api/offers`, { next: { revalidate: 600 } });
+  if (!res.ok) return [];
+  const data = (await res.json()) as UnknownRecord[];
+  // Garder les offres valides
+  return data
+    .map((r): Offer => ({
+      productId: r["productId"] as string | number | undefined,
+      title: pickStr(r, ["title"]),
+      brand: pickStr(r, ["brand"]),
+      merchant: pickStr(r, ["merchant"]),
+      imageUrl: pickStr(r, ["imageUrl"]),
+      price: (r["price"] as number | string | null) ?? null,
+      affiliateUrl: pickStr(r, ["affiliateUrl"]),
+      slug: pickStr(r, ["slug"]),
+      httpStatus: (r["httpStatus"] as number | string | undefined) ?? 200,
+    }))
+    .filter((o) => String(o.httpStatus || "200") === "200");
 }
 
-// ✅ Next 15 : params est un Promise
-export default async function ProductPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
+/* -------------------------------- Page --------------------------------- */
+
+export default async function ProductPage({ params }: PageProps) {
   const { slug } = await params;
 
-  // OFFRES
   const offers = await fetchOffers();
   const offer =
     offers.find((o) => o.slug === slug) ||
-    offers.find((o) => slugify(o.title || "") === slug);
+    offers.find((o) => (o.title ? slugify(o.title) : "") === slug);
 
-  // CONTENU (Google Sheet)
-  const content = (await getContentBySlug(slug)) as ContentPayload | null;
+  // Récupération du contenu éditorial
+  let contentRaw = (await getContentBySlug(slug)) as UnknownRecord | null;
+  if (!contentRaw && offer?.title) {
+    // Fallback de slug si le titre a été modifié dans le Google Sheet
+    contentRaw = (await getContentBySlug(slugify(offer.title))) as UnknownRecord | null;
+  }
+  const content = normalizeContent(contentRaw);
 
   const title = content?.title || offer?.title || slug.replace(/-/g, " ");
   const brand = content?.brand || offer?.brand || offer?.merchant || "";
   const heroImg = content?.image || offer?.imageUrl || "/images/product-placeholder.jpg";
-  const price = euro(offer?.price); // <- OK maintenant
+  const price = euro(offer?.price);
 
   const affiliateUrl = offer?.affiliateUrl;
   const hasAff = typeof affiliateUrl === "string" && affiliateUrl.trim().length > 0;
 
-  // Fallbacks texte si pas de HTML généré
-  const schema = content?.schema;
-  const intro = pickAny(schema, ["intro", "introduction"]);
-  const pros = pickAny(schema, ["pros", "pourquoi on aime"]);
-  const cons = pickAny(schema, ["cons", "à noter", "a noter"]);
-  const howto = pickAny(schema, ["how to", "howto", "comment l’utiliser", "comment l'utiliser", "comment utiliser"]);
-  const ratingRaw = pickAny(schema, ["note", "rating", "note globale (sur 5)"]);
-  const rating = ratingRaw ? Number(String(ratingRaw).replace(",", ".")) : content?.rating;
+  const rating = typeof content?.rating === "number" ? content.rating : undefined;
 
-  const related = offers.filter((o) => slugify(o.title || "") !== slug).slice(0, 2);
+  // Produits liés (même brand/merchant, autres items)
+  const related = offers
+    .filter((o) => (o.brand || o.merchant) && (o.brand === brand || o.merchant === brand))
+    .filter((o) => (o.slug ? o.slug !== slug : (o.title ? slugify(o.title) !== slug : true)))
+    .slice(0, 6);
 
   return (
-    <div className="mx-auto max-w-6xl px-6 pb-16 pt-8">
-      {/* HERO ROW */}
-      <div className="grid gap-8 md:grid-cols-2">
-        <div className="rounded-[24px] bg-white p-4 shadow-md ring-1 ring-[var(--bg-light)]">
+    <div className="mx-auto max-w-6xl px-6 pb-16 pt-6">
+      {/* Bandeau principal */}
+      <section className="grid items-start gap-8 md:grid-cols-2">
+        {/* Image encadrée */}
+        <div className="rounded-[28px] border bg-white p-3" style={{ borderColor: "rgba(235,200,178,0.8)" }}>
           <Image
             src={heroImg}
             alt={title}
-            width={1200}
-            height={1200}
+            width={1100}
+            height={1100}
             unoptimized
-            className="aspect-square w-full rounded-2xl object-cover"
+            className="aspect-square w-full rounded-2xl object-contain"
             priority
           />
         </div>
 
-        <div className="flex flex-col">
-          <h1 className={`${bodoni.className} text-4xl leading-tight`} style={{ color: "var(--text)" }}>{title}</h1>
-          {brand ? <p className="mt-2 text-lg opacity-80">— {brand}</p> : null}
-          {price ? <p className={`${bodoni.className} mt-6 text-2xl`} style={{ color: "var(--text)" }}>{price}</p> : null}
+        {/* Infos */}
+        <div>
+          <h1 className={`${bodoni.className} text-3xl md:text-4xl`} style={{ color: "#1e1e1e" }}>
+            {title}
+          </h1>
+          {brand ? (
+            <p className={`${nunito.className} mt-1 text-base opacity-70`} style={{ color: "#1e1e1e" }}>
+              — {brand}
+            </p>
+          ) : null}
+          {price ? (
+            <p className={`${bodoni.className} mt-5 text-xl`} style={{ color: "#1e1e1e" }}>
+              {price}
+            </p>
+          ) : null}
 
-          <div className="mt-6 flex flex-wrap items-center gap-3">
+          {/* Note en abricots */}
+          {typeof rating === "number" ? (
+            <div className="mt-3 flex items-center gap-2">
+              <ApricotRating value={rating} />
+              <span className={`${nunito.className} text-sm opacity-75`} style={{ color: "#1e1e1e" }}>
+                {rating}/5
+              </span>
+            </div>
+          ) : null}
+
+          {/* CTAs */}
+          <div className="mt-6 flex items-center gap-3">
             {hasAff ? (
-              <a
-                href={affiliateUrl as string}
-                target="_blank"
+              <Link
+                href={affiliateUrl!}
+                className={`${nunito.className} rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md`}
+                style={{ backgroundColor: "#C4A092" }}
                 rel="nofollow sponsored noopener"
-                className="rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
-                style={{ backgroundColor: "var(--accent)" }}
+                target="_blank"
               >
                 Voir l’offre
-              </a>
+              </Link>
             ) : null}
             <Link
               href="/offers"
-              className="rounded-2xl border px-5 py-3 transition"
-              style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
-              prefetch
+              className={`${nunito.className} rounded-2xl border px-5 py-3 transition hover:opacity-90`}
+              style={{ borderColor: "#C4A092", color: "#C4A092", backgroundColor: "transparent" }}
             >
               Voir toutes les offres
             </Link>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* INTRO */}
-      {intro ? (
-        <p className={`${nunito.className} mt-10 text-base opacity-90`} style={{ color: "var(--text)" }}>
-          {intro}
-        </p>
+      {/* Bloc éditorial */}
+      {(content?.intro || content?.pros || content?.cons || content?.howTo) ? (
+        <section className="mt-10 grid gap-8">
+          {/* Intro */}
+          {content?.intro ? (
+            <div className="rounded-2xl bg-white p-5 shadow-sm">
+              <h2 className={`${bodoni.className} mb-2 text-xl`} style={{ color: "#1e1e1e" }}>
+                À propos du produit
+              </h2>
+              <p className={`${nunito.className} leading-relaxed`} style={{ color: "#1e1e1e" }}>
+                {content.intro}
+              </p>
+            </div>
+          ) : null}
+
+          {/* Pourquoi on aime (sous l’intro) */}
+          {content?.pros ? (
+            <div className="rounded-2xl bg-white p-5 shadow-sm">
+              <h3 className={`${bodoni.className} mb-2 text-lg`} style={{ color: "#1e1e1e" }}>
+                Pourquoi on aime
+              </h3>
+              <RichBullets text={content.pros} />
+            </div>
+          ) : null}
+
+          {/* Cons + HowTo côte à côte */}
+          {content?.cons || content?.howTo ? (
+            <div className="grid gap-6 md:grid-cols-2">
+              {content?.cons ? (
+                <div className="rounded-2xl bg-white p-5 shadow-sm">
+                  <h3 className={`${bodoni.className} mb-2 text-lg`} style={{ color: "#1e1e1e" }}>
+                    À noter
+                  </h3>
+                  <RichBullets text={content.cons} />
+                </div>
+              ) : null}
+              {content?.howTo ? (
+                <div className="rounded-2xl bg-white p-5 shadow-sm">
+                  <h3 className={`${bodoni.className} mb-2 text-lg`} style={{ color: "#1e1e1e" }}>
+                    Comment l’utiliser
+                  </h3>
+                  <RichBullets text={content.howTo} />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
       ) : null}
 
-      {/* NOTE */}
-      {Number.isFinite(rating) ? (
-        <div className="mt-4 flex items-center gap-2">
-          <span aria-label={`Note ${rating}/5`} className="select-none">
-            {Array.from({ length: 5 }).map((_, i) => (i < Math.round(rating || 0) ? "🍑" : "🖤"))}
-          </span>
-          <span className="opacity-70">{String(rating)}/5</span>
-        </div>
-      ) : null}
-
-      {/* BLOCS Pros / Cons côte à côte puis HowTo */}
-      {(pros || cons || howto) ? (
-        <div className="mt-10 grid gap-6 md:grid-cols-2">
-          <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[var(--bg-light)]">
-            <h3 className={`${bodoni.className} text-xl`} style={{ color: "var(--text)" }}>Pourquoi on aime</h3>
-            {pros ? (
-              <ul className="mt-3 list-disc pl-5">
-                {pros.split("\n").map((li, i) => <li key={i}>{li.replace(/^•\s*/, "")}</li>)}
-              </ul>
-            ) : <p className="opacity-70">—</p>}
-          </div>
-
-          <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[var(--bg-light)]">
-            <h3 className={`${bodoni.className} text-xl`} style={{ color: "var(--text)" }}>À noter</h3>
-            {cons ? (
-              <ul className="mt-3 list-disc pl-5">
-                {cons.split("\n").map((li, i) => <li key={i}>{li.replace(/^•\s*/, "")}</li>)}
-              </ul>
-            ) : <p className="opacity-70">—</p>}
-          </div>
-
-          <div className="md:col-span-2 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-[var(--bg-light)]">
-            <h3 className={`${bodoni.className} text-xl`} style={{ color: "var(--text)" }}>Comment l’utiliser</h3>
-            {howto ? <p className="mt-3 whitespace-pre-line">{howto}</p> : <p className="opacity-70">—</p>}
-          </div>
-        </div>
-      ) : null}
-
-      {/* PRODUITS LIÉS */}
+      {/* Produits liés */}
       <section className="mt-12">
-        <h2 className={`${bodoni.className} text-2xl`} style={{ color: "var(--text)" }}>Produits liés</h2>
+        <h2 className={`${bodoni.className} mb-4 text-2xl`} style={{ color: "#1e1e1e" }}>
+          Produits liés
+        </h2>
         {related.length ? (
-          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {related.map((o, i) => <OfferCard key={`${o.productId}-${i}`} offer={o} />)}
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {related.map((o, i) => (
+              <OfferCard key={`${o.productId}-${i}`} offer={o as any} index={i} originSlug={slug} />
+            ))}
           </div>
         ) : (
-          <p className="mt-3 opacity-70">Aucun autre produit pour le moment.</p>
+          <p className={`${nunito.className} opacity-70`} style={{ color: "#1e1e1e" }}>
+            Aucun autre produit pour le moment.
+          </p>
         )}
       </section>
     </div>
+  );
+}
+
+/* --------------------------- Sous-composants --------------------------- */
+
+function ApricotRating({ value = 0 }: { value?: number }) {
+  const v = Math.max(0, Math.min(5, Math.round(value)));
+  return (
+    <div className="flex items-center gap-1 text-lg" aria-label={`Note ${v} sur 5`}>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <span key={i} aria-hidden="true">{i < v ? "🍑" : "🖤"}</span>
+      ))}
+    </div>
+  );
+}
+
+function RichBullets({ text }: { text: string }) {
+  // Accepte un bloc avec puces séparées par sauts de ligne, "• ", "-", etc.
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^\s*(?:[-•–]\s*)?/, "").trim())
+    .filter(Boolean);
+  if (!lines.length) return <p>{text}</p>;
+  return (
+    <ul className="list-disc pl-5 leading-relaxed">
+      {lines.map((l, i) => (
+        <li key={i}>{l}</li>
+      ))}
+    </ul>
   );
 }
