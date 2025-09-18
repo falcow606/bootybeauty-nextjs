@@ -55,7 +55,7 @@ async function fetchOffers(): Promise<CardOffer[]> {
   return (await r.json()) as CardOffer[];
 }
 
-// ✅ IMPORTANT (Next 15) : params est un Promise
+// ✅ Next 15 : params est un Promise
 export default async function ProductPage({
   params,
 }: {
