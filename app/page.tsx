@@ -1,4 +1,3 @@
-// app/page.tsx
 export const dynamic = "force-dynamic";
 
 import React from "react";
@@ -6,8 +5,15 @@ import Link from "next/link";
 import Image from "next/image";
 import { Bodoni_Moda, Nunito_Sans } from "next/font/google";
 
-const bodoni = Bodoni_Moda({ subsets: ["latin"], style: ["normal"], weight: ["400", "600", "700"] });
-const nunito = Nunito_Sans({ subsets: ["latin"], weight: ["300", "400", "600", "700"] });
+const bodoni = Bodoni_Moda({
+  subsets: ["latin"],
+  style: ["normal"],
+  weight: ["400", "600", "700"],
+});
+const nunito = Nunito_Sans({
+  subsets: ["latin"],
+  weight: ["300", "400", "600", "700"],
+});
 
 type UnknownRecord = Record<string, unknown>;
 type FeaturedProduct = {
@@ -21,8 +27,12 @@ type FeaturedProduct = {
 };
 
 function slugify(input: string): string {
-  const s = input.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const s = input
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
   return s || "produit";
 }
 function truthy(v: unknown): boolean {
@@ -45,13 +55,40 @@ function mapOffer(row: UnknownRecord): FeaturedProduct {
     id: getStr(row, ["Product_ID", "ID", "id"]),
     title: getStr(row, ["Title", "Nom", "name"]) ?? "Produit",
     brand: getStr(row, ["Marque", "Brand", "Marchand"]),
-    imageUrl: getStr(row, ["imageUrl","Image_URL","Image Url","Image URL","image_url","Image","image","Hero","Hero_Image","Hero URL","Image_Hero"]),
+    imageUrl: getStr(row, [
+      "imageUrl",
+      "Image_URL",
+      "Image Url",
+      "Image URL",
+      "image_url",
+      "Image",
+      "image",
+      "Hero",
+      "Hero_Image",
+      "Hero URL",
+      "Image_Hero",
+    ]),
     price: getStr(row, ["Prix (€)", "Price", "price"]),
     affiliateUrl: getStr(row, [
-      "affiliateUrl","finalUrl","url","link",
-      "Affiliate_URL","Affiliate URL","Affiliate Url","Affiliate Link","Affiliate",
-      "Lien affilié","Lien","Lien_achat","BuyLink","Buy Link",
-      "Product_URL","Product URL","URL produit","Amazon_URL","ASIN_URL"
+      "affiliateUrl",
+      "finalUrl",
+      "url",
+      "link",
+      "Affiliate_URL",
+      "Affiliate URL",
+      "Affiliate Url",
+      "Affiliate Link",
+      "Affiliate",
+      "Lien affilié",
+      "Lien",
+      "Lien_achat",
+      "BuyLink",
+      "Buy Link",
+      "Product_URL",
+      "Product URL",
+      "URL produit",
+      "Amazon_URL",
+      "ASIN_URL",
     ]),
     slug: getStr(row, ["Slug", "slug"]),
   };
@@ -62,10 +99,12 @@ async function getFeaturedOffers(): Promise<FeaturedProduct[]> {
   if (!url) return [];
 
   const headers: Record<string, string> = {};
-  if (process.env.N8N_OFFERS_KEY) headers["x-api-key"] = String(process.env.N8N_OFFERS_KEY);
+  if (process.env.N8N_OFFERS_KEY)
+    headers["x-api-key"] = String(process.env.N8N_OFFERS_KEY);
 
   const fetchInit: RequestInit & { next?: { revalidate?: number } } =
-    process.env.VERCEL_ENV === "preview" || process.env.NODE_ENV !== "production"
+    process.env.VERCEL_ENV === "preview" ||
+    process.env.NODE_ENV !== "production"
       ? { headers, cache: "no-store" }
       : { headers, next: { revalidate: 1800 } };
 
@@ -81,7 +120,12 @@ async function getFeaturedOffers(): Promise<FeaturedProduct[]> {
 
   const filtered = process.env.N8N_FEATURED_URL
     ? items
-    : items.filter((r) => truthy(r["Featured"]) || truthy(r["A l affiche"]) || truthy(r["Featured?"]));
+    : items.filter(
+        (r) =>
+          truthy(r["Featured"]) ||
+          truthy(r["A l affiche"]) ||
+          truthy(r["Featured?"])
+      );
 
   filtered.sort((a, b) => {
     const ao = Number(getStr(a, ["Featured_Order", "featured_order"]) ?? "999");
@@ -95,39 +139,45 @@ async function getFeaturedOffers(): Promise<FeaturedProduct[]> {
   return filtered.slice(0, 3).map(mapOffer);
 }
 
-// —————————————————————————————————————
+// ———————————————————————————————————————————
+// Styles racine (typés pour éviter "any")
+const rootStyle: React.CSSProperties & Record<string, string> = {
+  "--accent": "#C4A092",
+  "--secondary": "#DABCB2",
+  "--bg-light": "#EBC8B2",
+  "--bg-main": "#FAF0E6",
+  "--text": "#333333",
+  backgroundColor: "var(--bg-main)",
+};
+// ———————————————————————————————————————————
 
 export default async function HomePage() {
   const featured = await getFeaturedOffers();
-
-  const rootStyle = {
-    ["--accent" as any]: "#C4A092",
-    ["--secondary" as any]: "#DABCB2",
-    ["--bg-light" as any]: "#EBC8B2",
-    ["--bg-main" as any]: "#FAF0E6",
-    ["--text" as any]: "#333333",
-    backgroundColor: "var(--bg-main)",
-  } as React.CSSProperties;
 
   return (
     <div className="min-h-screen w-full" style={rootStyle}>
       {/* HERO */}
       <section className="mx-auto grid max-w-6xl items-center gap-8 px-6 pb-8 pt-10 md:grid-cols-2">
         <div>
-          <h1 className={`${bodoni.className} text-4xl leading-tight md:text-5xl`} style={{ color: "var(--text)" }}>
+          <h1
+            className={`${bodoni.className} text-4xl leading-tight md:text-5xl`}
+            style={{ color: "var(--text)" }}
+          >
             Sélection beauté <span style={{ color: "var(--accent)" }}>tendance</span> &<br />
             bons <span style={{ color: "var(--accent)" }}>plans</span>
           </h1>
-          <p className={`${nunito.className} mt-4 text-base opacity-80 md:text-lg`} style={{ color: "var(--text)" }}>
-            Bienvenue sur Booty & Cutie, le blog beauté qui t’aide à trouver les meilleurs soins pour les fesses, les produits intimes sûrs et tous les bons plans beauté du moment.
+          <p
+            className={`${nunito.className} mt-4 text-base opacity-80 md:text-lg`}
+            style={{ color: "var(--text)" }}
+          >
+            Bienvenue sur Booty & Cutie, le blog beauté qui t’aide à trouver les meilleurs soins pour les
+            fesses, les produits intimes sûrs et tous les bons plans beauté du moment.
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-3">
-            <Link href="/offers" className="rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md" style={{ backgroundColor: "var(--accent)" }}>
+            <PrimaryButton href="/offers" aria-label="Voir les meilleures offres">
               Voir les Top 10
-            </Link>
-            <Link href="/blog" className="rounded-2xl border px-5 py-3 transition" style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
-              Notre méthode
-            </Link>
+            </PrimaryButton>
+            <SecondaryButton href="/blog">Notre méthode</SecondaryButton>
           </div>
         </div>
         <div className="relative">
@@ -140,8 +190,14 @@ export default async function HomePage() {
             className="aspect-[4/3] w-full rounded-3xl object-cover shadow-xl"
             priority
           />
-          <div className="absolute -bottom-4 -left-4 h-24 w-24 rounded-3xl opacity-30 blur-md" style={{ backgroundColor: "var(--accent)" }} />
-          <div className="absolute -top-4 -right-4 h-20 w-20 rounded-3xl opacity-30 blur-md" style={{ backgroundColor: "var(--secondary)" }} />
+          <div
+            className="absolute -bottom-4 -left-4 h-24 w-24 rounded-3xl opacity-30 blur-md"
+            style={{ backgroundColor: "var(--accent)" }}
+          />
+          <div
+            className="absolute -top-4 -right-4 h-20 w-20 rounded-3xl opacity-30 blur-md"
+            style={{ backgroundColor: "var(--secondary)" }}
+          />
         </div>
       </section>
 
@@ -151,92 +207,221 @@ export default async function HomePage() {
           {(featured && featured.length
             ? featured
             : [
-                { title: "Bom Dia Bright Cream", price: "", imageUrl: "/images/bom-dia-bright-cream.jpg", brand: "", affiliateUrl: "" },
-                { title: "Beauty Booty Lightening Cream", price: "", imageUrl: "/images/beauty-booty-whitening.jpg", brand: "", affiliateUrl: "" },
-                { title: "Huile Corps Sublimatrice Body Sunshine", price: "", imageUrl: "/images/huile-corps-sunshine.jpg", brand: "", affiliateUrl: "" },
+                {
+                  title: "Bom Dia Bright Cream",
+                  price: "",
+                  imageUrl: "/images/bom-dia-bright-cream.jpg",
+                  brand: "",
+                  affiliateUrl: "",
+                },
+                {
+                  title: "Beauty Booty Lightening Cream",
+                  price: "",
+                  imageUrl: "/images/beauty-booty-whitening.jpg",
+                  brand: "",
+                  affiliateUrl: "",
+                },
+                {
+                  title: "Huile Corps Sublimatrice Body Sunshine",
+                  price: "",
+                  imageUrl: "/images/huile-corps-sunshine.jpg",
+                  brand: "",
+                  affiliateUrl: "",
+                },
               ]
           ).map((p, i) => {
             const detailsSlug = p.slug || (p.title ? slugify(p.title) : "");
             const detailsHref = detailsSlug ? `/p/${detailsSlug}` : "/offers";
-            const hasAff = typeof p.affiliateUrl === "string" && p.affiliateUrl.trim().length > 0;
             return (
-              <article key={p.id || p.slug || p.title || String(i)} className="flex flex-col rounded-3xl bg-white p-5 shadow-md">
-                <Image src={p.imageUrl || "/images/product-placeholder.jpg"} alt={`${p.title} — photo produit`} width={600} height={600} unoptimized className="aspect-square w-full rounded-2xl object-cover" />
-                <div className="mt-4 flex items-start justify-between gap-4">
-                  <div>
-                    <h3 className={`${bodoni.className} text-xl`} style={{ color: "var(--accent)" }}>{p.title}</h3>
-                    <p className={`${nunito.className} text-sm opacity-80`} style={{ color: "var(--text)" }}>
-                      {p.brand ? p.brand : "Soin corps • 200 ml"}
-                    </p>
-                  </div>
-                  {featured?.length ? (
-                    <span className={`${nunito.className} inline-block rounded-full px-3 py-1 text-sm`} style={{ backgroundColor: "var(--bg-main)", border: "1px solid var(--bg-light)", color: "var(--text)" }}>
-                      À l'affiche
-                    </span>
-                  ) : null}
-                </div>
-                <div className="mt-4 flex items-center justify-between">
-                  <span className={`${bodoni.className} text-xl`} style={{ color: "var(--text)" }}>{p.price || ""}</span>
-                  <div className="flex items-center gap-2">
-                    <Link href={detailsHref} className="rounded-2xl border px-5 py-3 transition" style={{ borderColor: "var(--accent)", color: "var(--accent)" }} prefetch>
-                      Détails
-                    </Link>
-                    {hasAff ? (
-                      <a
-                        href={p.affiliateUrl as string}
-                        target="_blank"
-                        rel="nofollow sponsored noopener"
-                        className="rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md"
-                        style={{ backgroundColor: "var(--accent)" }}
-                      >
-                        Voir l’offre
-                      </a>
-                    ) : (
-                      <Link href="/offers" className="rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md" style={{ backgroundColor: "var(--accent)" }}>
-                        Voir l’offre
-                      </Link>
-                    )}
-                  </div>
-                </div>
-              </article>
+              <ProductCard
+                key={p.id || p.slug || p.title || String(i)}
+                title={p.title}
+                price={p.price || ""}
+                // Apostrophe typographique → pas d’avertissement ESLint
+                tag={featured?.length ? "À l’affiche" : undefined}
+                imageSrc={p.imageUrl}
+                brand={p.brand}
+                href={p.affiliateUrl}
+                detailsHref={detailsHref}
+              />
             );
           })}
         </section>
 
         <section className="mt-12 grid gap-6 md:grid-cols-3">
-          <div className="rounded-3xl border p-5" style={{ borderColor: "var(--bg-light)" }}>
-            <h4 className={`${bodoni.className} text-lg`} style={{ color: "var(--text)" }}>Sélection éditoriale</h4>
-            <p className={`${nunito.className} mt-2 text-sm opacity-80`} style={{ color: "var(--text)" }}>Nos choix sont indépendants et argumentés.</p>
-          </div>
-          <div className="rounded-3xl border p-5" style={{ borderColor: "var(--bg-light)" }}>
-            <h4 className={`${bodoni.className} text-lg`} style={{ color: "var(--text)" }}>Transparence affiliée</h4>
-            <p className={`${nunito.className} mt-2 text-sm opacity-80`} style={{ color: "var(--text)" }}>Nous le signalons clairement quand un lien est affilié.</p>
-          </div>
-          <div className="rounded-3xl border p-5" style={{ borderColor: "var(--bg-light)" }}>
-            <h4 className={`${bodoni.className} text-lg`} style={{ color: "var(--text)" }}>Mises à jour</h4>
-            <p className={`${nunito.className} mt-2 text-sm opacity-80`} style={{ color: "var(--text)" }}>Offres et contenus rafraîchis régulièrement.</p>
-          </div>
+          <TrustItem title="Sélection éditoriale">
+            Nos choix sont indépendants et argumentés.
+          </TrustItem>
+          <TrustItem title="Transparence affiliée">
+            Nous le signalons clairement quand un lien est affilié.
+          </TrustItem>
+          <TrustItem title="Mises à jour">
+            Offres et contenus rafraîchis régulièrement.
+          </TrustItem>
         </section>
 
         <div className="mt-12 flex items-center justify-center">
-          <Link href="/offers" className="rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md" style={{ backgroundColor: "var(--accent)" }}>
-            Voir toutes les offres
-          </Link>
+          <PrimaryButton href="/offers">Voir toutes les offres</PrimaryButton>
         </div>
       </main>
 
       <footer className="mt-6">
         <div className="mx-auto max-w-6xl px-6 pb-16">
-          <div className={`${nunito.className} rounded-3xl p-6`} style={{ backgroundColor: "var(--secondary)", color: "#333" }}>
+          <div
+            className={`${nunito.className} rounded-3xl p-6`}
+            style={{ backgroundColor: "var(--secondary)", color: "#333" }}
+          >
             <p className="text-sm">
-              <strong>Transparence&nbsp;:</strong> Certains liens sont affiliés. Nous pouvons percevoir une commission si vous achetez via nos liens. Cela ne change rien au prix et nous aide à maintenir ce site.
+              <strong>Transparence&nbsp;:</strong> Certains liens sont affiliés. Nous pouvons percevoir
+              une commission si vous achetez via nos liens. Cela ne change rien au prix et nous aide à
+              maintenir ce site.
             </p>
           </div>
-          <p className={`${nunito.className} mt-6 text-center text-xs opacity-70`} style={{ color: "var(--text)" }}>
+          <p
+            className={`${nunito.className} mt-6 text-center text-xs opacity-70`}
+            style={{ color: "var(--text)" }}
+          >
             © {new Date().getFullYear()} Booty & Cutie — Tous droits réservés
           </p>
         </div>
       </footer>
+    </div>
+  );
+}
+
+type ButtonLinkProps = {
+  href?: string;
+  target?: string;
+  rel?: string;
+} & React.ButtonHTMLAttributes<HTMLButtonElement>;
+
+function PrimaryButton({
+  children,
+  href,
+  target,
+  rel,
+  ...props
+}: React.PropsWithChildren<ButtonLinkProps>) {
+  const className = `${nunito.className} rounded-2xl px-5 py-3 text-white shadow-sm transition hover:opacity-90 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60`;
+  const style = { backgroundColor: "var(--accent)" } as React.CSSProperties;
+  if (href)
+    return (
+      <Link href={href} className={className} style={style} target={target} rel={rel}>
+        {children}
+      </Link>
+    );
+  return (
+    <button className={className} style={style} {...props}>
+      {children}
+    </button>
+  );
+}
+function SecondaryButton({
+  children,
+  href,
+  target,
+  rel,
+  ...props
+}: React.PropsWithChildren<ButtonLinkProps>) {
+  const className = `${nunito.className} rounded-2xl border px-5 py-3 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60`;
+  const style = {
+    borderColor: "var(--accent)",
+    color: "var(--accent)",
+    backgroundColor: "transparent",
+  } as React.CSSProperties;
+  if (href)
+    return (
+      <Link href={href} className={className} style={style} target={target} rel={rel}>
+        {children}
+      </Link>
+    );
+  return (
+    <button className={className} style={style} {...props}>
+      {children}
+    </button>
+  );
+}
+
+function Badge({ children }: React.PropsWithChildren) {
+  return (
+    <span
+      className={`${nunito.className} inline-block rounded-full px-3 py-1 text-sm`}
+      style={{ backgroundColor: "var(--bg-main)", border: "1px solid var(--bg-light)", color: "var(--text)" }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function ProductCard({
+  title,
+  price = "",
+  tag,
+  imageSrc = "/images/product-placeholder.jpg",
+  brand,
+  href,
+  detailsHref,
+}: {
+  title: string;
+  price?: string;
+  tag?: string;
+  imageSrc?: string;
+  brand?: string;
+  href?: string;
+  detailsHref?: string;
+}) {
+  return (
+    <article className="flex flex-col rounded-3xl bg-white p-5 shadow-md">
+      <Image
+        src={imageSrc}
+        alt={`${title} — photo produit`}
+        width={600}
+        height={600}
+        unoptimized
+        className="aspect-square w-full rounded-2xl object-cover"
+      />
+      <div className="mt-4 flex items-start justify-between gap-4">
+        <div>
+          <h3 className={`${bodoni.className} text-xl`} style={{ color: "var(--accent)" }}>
+            {title}
+          </h3>
+          <p className={`${nunito.className} text-sm opacity-80`} style={{ color: "var(--text)" }}>
+            {brand ? brand : "Soin corps • 200 ml"}
+          </p>
+        </div>
+        {tag ? <Badge>{tag}</Badge> : null}
+      </div>
+      <div className="mt-4 flex items-center justify-between">
+        <span className={`${bodoni.className} text-xl`} style={{ color: "var(--text)" }}>
+          {price}
+        </span>
+        <div className="flex items-center gap-2">
+          <SecondaryButton href={detailsHref || "/offers"}>Détails</SecondaryButton>
+          {href ? (
+            <PrimaryButton href={href} target="_blank" rel="nofollow sponsored noopener">
+              Voir l’offre
+            </PrimaryButton>
+          ) : (
+            <PrimaryButton href="/offers">Voir l’offre</PrimaryButton>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function TrustItem({
+  title,
+  children,
+}: React.PropsWithChildren<{ title: string }>) {
+  return (
+    <div className="rounded-3xl border p-5" style={{ borderColor: "var(--bg-light)" }}>
+      <h4 className={`${bodoni.className} text-lg`} style={{ color: "var(--text)" }}>
+        {title}
+      </h4>
+      <p className={`${nunito.className} mt-2 text-sm opacity-80`} style={{ color: "var(--text)" }}>
+        {children}
+      </p>
     </div>
   );
 }
