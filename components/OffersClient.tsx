@@ -8,19 +8,11 @@ export type OffersClientProps = {
 };
 
 export default function OffersClient({ items, originSlug }: OffersClientProps) {
-  if (!Array.isArray(items) || items.length === 0) {
-    return <p className="opacity-70">Aucune offre pour le moment.</p>;
-  }
-
+  if (!items?.length) return null;
   return (
     <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((o, i) => (
-        <OfferCard
-          key={`${o.productId ?? o.slug ?? o.title ?? i}-${i}`}
-          offer={o}
-          index={i}
-          originSlug={originSlug}
-        />
+        <OfferCard key={`${o.productId || o.title || "o"}-${i}`} offer={o} index={i} originSlug={originSlug} />
       ))}
     </div>
   );
