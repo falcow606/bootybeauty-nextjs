@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import Image from "next/image";
 import Link from "next/link";
+import Papa from "papaparse";
 import { Bodoni_Moda, Nunito_Sans } from "next/font/google";
 import OfferCard from "@/components/OfferCard";
 
@@ -48,16 +49,13 @@ function slugify(input: string): string {
     .replace(/^-+|-+$/g, "");
   return s || "produit";
 }
-
 function getStr(obj: UnknownRecord, keys: string[]): string | undefined {
   for (const raw of keys) {
-    // exact
     if (raw in obj) {
       const v = obj[raw];
       if (typeof v === "string" && v.trim()) return v.trim();
       if (typeof v === "number") return String(v);
     }
-    // tolérant "Hero " => "Hero"
     const hit = Object.keys(obj).find((k) => k.trim().toLowerCase() === raw.trim().toLowerCase());
     if (hit) {
       const v = obj[hit];
@@ -67,7 +65,6 @@ function getStr(obj: UnknownRecord, keys: string[]): string | undefined {
   }
   return undefined;
 }
-
 function euro(v: string | number | null | undefined): string {
   if (v == null) return "";
   const num =
@@ -77,48 +74,6 @@ function euro(v: string | number | null | undefined): string {
   if (!Number.isFinite(num)) return String(v);
   return num.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " €";
 }
-
-// CSV utils (sûr pour guillemets)
-function splitCSVLine(line: string): string[] {
-  const out: string[] = [];
-  let cur = "";
-  let quoted = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (c === '"') {
-      if (quoted && line[i + 1] === '"') {
-        cur += '"';
-        i++;
-      } else {
-        quoted = !quoted;
-      }
-    } else if (c === "," && !quoted) {
-      out.push(cur);
-      cur = "";
-    } else {
-      cur += c;
-    }
-  }
-  out.push(cur);
-  return out;
-}
-function parseCSV(text: string): UnknownRecord[] {
-  const rows = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-  const cleaned = rows.filter((r) => r.trim().length > 0);
-  if (cleaned.length === 0) return [];
-  const header = splitCSVLine(cleaned[0]).map((h) => h.trim());
-  const items: UnknownRecord[] = [];
-  for (let i = 1; i < cleaned.length; i++) {
-    const vals = splitCSVLine(cleaned[i]);
-    const row: UnknownRecord = {};
-    header.forEach((h, idx) => {
-      row[h] = (vals[idx] ?? "").trim();
-    });
-    items.push(row);
-  }
-  return items;
-}
-
 function isPromise(v: unknown): v is Promise<unknown> {
   return typeof v === "object" && v !== null && "then" in (v as Record<string, unknown>);
 }
@@ -184,7 +139,15 @@ async function loadContent(): Promise<Content[]> {
   const res = await fetch(csvUrl, { cache: "no-store" });
   if (!res.ok) return [];
   const text = await res.text();
-  const rows = parseCSV(text);
+
+  // ✅ Papa Parse gère les sauts de ligne dans les champs entre guillemets (Pros/Cons/HowTo)
+  const parsed = Papa.parse(text, {
+    header: true,
+    skipEmptyLines: true,
+  });
+
+  const rows = (parsed.data as unknown[]).filter((r) => r && typeof r === "object") as UnknownRecord[];
+
   const items: Content[] = rows.map((r) => {
     const slug =
       getStr(r, ["Slug"]) || slugify(getStr(r, ["Title"]) ?? getStr(r, ["Nom"]) ?? "produit");
@@ -208,18 +171,18 @@ async function loadContent(): Promise<Content[]> {
       rating,
     };
   });
+
   return items;
 }
 
 // ---------- Abricots ----------
 function Apricots({ value = 0 }: { value?: number }) {
-  const filled = Math.max(0, Math.min(5, Math.floor(value)));
-  const arr = Array.from({ length: 5 }, (_, i) => (i < filled ? "full" : "empty"));
+  const filled = Math.max(0, Math.min(5, Math.round(value)));
   return (
-    <span aria-label={`${filled}/5`} title={`${filled}/5`} className="inline-flex gap-1 align-middle">
-      {arr.map((t, idx) => (
-        <span key={idx} className="text-lg leading-none" aria-hidden="true">
-          {t === "full" ? "🍑" : "🥭"}
+    <span className="inline-flex items-center gap-1 align-middle" aria-label={`${filled}/5`} title={`${filled}/5`}>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <span key={i} className={i < filled ? "" : "opacity-30"} aria-hidden="true">
+          🍑
         </span>
       ))}
     </span>
@@ -230,20 +193,18 @@ function Apricots({ value = 0 }: { value?: number }) {
 // ===============   PAGE PRODUIT   ======================
 // =======================================================
 
-// NOTE: pas d’annotation PageProps ici (Next 15 peut typer params en Promise).
 export default async function ProductPage(props: unknown) {
-  // Normalise params (objet OU promesse)
+  // params peut être un objet OU une promesse (Next 15)
   let slug = "";
-  const p = (props as { params?: unknown }).params;
-  if (isPromise(p)) {
-    const resolved = (await p) as { slug?: unknown };
+  const maybe = (props as { params?: unknown }).params;
+  if (isPromise(maybe)) {
+    const resolved = (await maybe) as { slug?: unknown };
     slug = typeof resolved?.slug === "string" ? resolved.slug : "";
   } else {
-    slug = typeof (p as { slug?: unknown })?.slug === "string" ? (p as { slug: string }).slug : "";
+    slug = typeof (maybe as { slug?: unknown })?.slug === "string" ? (maybe as { slug: string }).slug : "";
   }
   if (!slug) slug = "produit";
 
-  // Charge en parallèle
   const [offers, contents] = await Promise.all([loadOffers(), loadContent()]);
 
   const offer = offers.find((o) => o.slug === slug) ?? null;
@@ -259,7 +220,7 @@ export default async function ProductPage(props: unknown) {
   const affiliateUrl = offer?.affiliateUrl;
   const hasAff = typeof affiliateUrl === "string" && affiliateUrl.trim().length > 0;
 
-  // Produits liés : même catégorie si dispo, sinon 2 autres
+  // Produits liés
   const related = offers
     .filter((o) => o.slug !== slug && (o.category && o.category === offer?.category))
     .slice(0, 2);
@@ -268,9 +229,9 @@ export default async function ProductPage(props: unknown) {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-6">
-      {/* Ligne principale */}
+      {/* Bandeau principal */}
       <section className="grid gap-8 md:grid-cols-2">
-        {/* Image avec épaisse bordure blanche */}
+        {/* Image avec cadre blanc épais */}
         <div className="rounded-[22px] bg-white p-3 shadow-sm">
           <Image
             src={heroImg}
@@ -293,11 +254,9 @@ export default async function ProductPage(props: unknown) {
           {/* rating / marque / prix */}
           <div className={`${nunito.className} mt-3 flex flex-wrap items-center gap-3 text-sm`}>
             <Apricots value={rating ?? 0} />
-            {typeof rating === "number" ? <span>{Math.floor(rating)}/5</span> : null}
+            {typeof rating === "number" ? <span>{Math.round(rating)}/5</span> : null}
             {brand ? <span>Marque&nbsp;: {brand}</span> : null}
-            {price ? (
-              <span className="rounded-full bg-neutral-100 px-2 py-0.5">{price}</span>
-            ) : null}
+            {price ? <span className="rounded-full bg-neutral-100 px-2 py-0.5">{price}</span> : null}
           </div>
 
           {/* CTAs */}
@@ -322,7 +281,7 @@ export default async function ProductPage(props: unknown) {
         </div>
       </section>
 
-      {/* Intro */}
+      {/* En bref */}
       {content?.intro ? (
         <section className={`${nunito.className} mt-8 leading-relaxed`}>
           <h2 className={`${bodoni.className} mb-2 text-xl`}>En bref</h2>
@@ -330,7 +289,7 @@ export default async function ProductPage(props: unknown) {
         </section>
       ) : null}
 
-      {/* Pourquoi on aime (sous l'intro, pleine largeur) */}
+      {/* Pourquoi on aime */}
       {content?.pros && content.pros.length > 0 ? (
         <section className="mt-6 rounded-3xl bg-white/50 p-6">
           <h3 className={`${bodoni.className} mb-2 text-lg`}>Pourquoi on aime</h3>
