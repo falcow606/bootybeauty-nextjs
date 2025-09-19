@@ -41,17 +41,18 @@ type ContentRow = {
 };
 
 function slugify(input: string): string {
-  return input
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "") || "produit";
+  return (
+    input
+      ?.normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "produit"
+  );
 }
 
 function euro(v: unknown): string {
   if (v === null || v === undefined || v === "") return "";
-  // autoriser valeurs "12,34 €" venant de Sheets
   if (typeof v === "string") {
     const s = v.trim();
     const maybe = Number(s.replace(/[^\d.,-]/g, "").replace(",", "."));
@@ -61,7 +62,6 @@ function euro(v: unknown): string {
         currency: "EUR",
       });
     }
-    // Déjà formaté
     if (/[€]/.test(s)) return s;
   }
   const n = Number(v);
@@ -69,23 +69,16 @@ function euro(v: unknown): string {
   return n.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
 }
 
-/**
- * CSV parser très tolérant (gère les champs entre guillemets et les virgules dans les champs).
- */
+/** CSV parser tolérant (gère quotes et virgules internes) */
 function parseCSV(csvText: string): ContentRow[] {
-  const lines = csvText
-    .split(/\r?\n/)
-    .filter((l) => l.trim().length > 0);
-
+  const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
   if (lines.length === 0) return [];
   const split = (line: string): string[] => {
-    // coupe sur les virgules qui ne sont pas à l'intérieur de guillemets
     const re = /,(?=(?:[^"]*"[^"]*")*[^"]*$)/g;
     return line
       .split(re)
       .map((c) => c.replace(/^"(.*)"$/s, "$1").replace(/""/g, `"`).trim());
   };
-
   const header = split(lines[0]);
   const rows: ContentRow[] = [];
   for (let i = 1; i < lines.length; i++) {
@@ -93,7 +86,6 @@ function parseCSV(csvText: string): ContentRow[] {
     if (cols.length === 1 && cols[0] === "") continue;
     const obj: Record<string, string> = {};
     header.forEach((h, idx) => (obj[h] = cols[idx] ?? ""));
-    // normalisation de quelques noms de colonnes possibles
     const r: ContentRow = {
       Slug: obj["Slug"] ?? "",
       Title: obj["Title"] ?? obj["Titre"] ?? "",
@@ -115,16 +107,13 @@ async function getOffers(): Promise<Offer[]> {
   const base =
     process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
     "https://bootybeauty-nextjs.vercel.app";
-  const res = await fetch(`${base}/api/offers`, {
-    // on veut toujours frais pour les prix/stock
-    cache: "no-store",
-  });
+  const res = await fetch(`${base}/api/offers`, { cache: "no-store" });
   if (!res.ok) return [];
   const data = (await res.json()) as unknown;
   return Array.isArray(data) ? (data as Offer[]) : [];
 }
 
-async function getContentBySlug(slug: string): Promise<ContentRow | undefined> {
+async function getContentBySlug(slug: string): Promise[ContentRow | undefined] {
   const csvUrl = process.env.SHEETS_CONTENT_CSV;
   if (!csvUrl) return undefined;
   const res = await fetch(csvUrl, { cache: "no-store" });
@@ -136,7 +125,6 @@ async function getContentBySlug(slug: string): Promise<ContentRow | undefined> {
 
 function splitBullets(s?: string): string[] {
   if (!s) return [];
-  // accepte : lignes, points-virgules, tirets…
   const raw = s.split(/\r?\n|;|•|-/).map((x) => x.trim());
   return raw.filter((x) => x.length > 0);
 }
@@ -162,25 +150,28 @@ function drawPeaches(note?: string | number): React.ReactNode {
   return <span className="inline-flex items-center">{items}</span>;
 }
 
+type Params = { slug: string };
+
 export default async function ProductPage({
   params,
 }: {
-  params: { slug: string };
+  params: Promise<Params>;
 }) {
-  const slug = params.slug;
+  // >>> différence clé : Next 15 peut passer params en Promise
+  const { slug } = await params;
 
-  // 1) contenu (Intro/Pros/Cons/HowTo/Note…)
+  // 1) Contenu (Intro/Pros/Cons/HowTo/Note…)
   const content = await getContentBySlug(slug);
 
-  // 2) offres (pour image/prix/affiliation/brand…)
+  // 2) Offres (image/prix/affiliation/brand…)
   const offers = await getOffers();
 
-  // tentative d’association par slug sur le titre des offres
+  // Association par slug sur titre d’offre
   const matchFromTitle = offers.find((o) =>
     o?.title ? slugify(o.title) === slug : false
   );
 
-  // sinon par proximité de marque + présence de mots du slug dans le titre
+  // Fallback tolérant
   const matchFallback =
     matchFromTitle ||
     offers.find((o) => {
@@ -211,7 +202,7 @@ export default async function ProductPage({
   const affiliate = (offer?.affiliateUrl ?? "").trim();
   const hasAff = affiliate.length > 0;
 
-  // Produits liés par marque (hors produit courant)
+  // Produits liés : même brand/merchant (max 2)
   const related =
     offers
       .filter(
@@ -225,7 +216,7 @@ export default async function ProductPage({
     <div className="mx-auto max-w-6xl px-6 py-8" style={{ backgroundColor: "#FAF0E6" }}>
       {/* HEADER : Image + panneau droite */}
       <section className="grid grid-cols-1 gap-8 md:grid-cols-2">
-        {/* Carte image blanche (comme validé) */}
+        {/* Carte image blanche */}
         <div className="rounded-[22px] bg-white p-3 shadow-sm">
           <Image
             src={hero}
@@ -238,7 +229,7 @@ export default async function ProductPage({
           />
         </div>
 
-        {/* Colonne droite : titre, meta, CTA, En bref & Pourquoi on aime */}
+        {/* Colonne droite */}
         <div>
           <h1
             className={`${bodoni.className} text-3xl md:text-4xl`}
@@ -256,7 +247,7 @@ export default async function ProductPage({
             </p>
           ) : null}
 
-          {/* Meta : note / marque / prix */}
+          {/* Meta */}
           <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
             {rating ? (
               <>
@@ -353,7 +344,9 @@ export default async function ProductPage({
                 ))}
               </ul>
             </div>
-          ) : <div className="hidden md:block" />}
+          ) : (
+            <div className="hidden md:block" />
+          )}
 
           {/* Comment l’utiliser */}
           {howto ? (
