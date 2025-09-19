@@ -40,6 +40,7 @@ type ContentRow = {
   ["Note globale (sur 5)"]?: string | number;
 };
 
+// -------- helpers ----------
 function slugify(input: string): string {
   return (
     input
@@ -55,6 +56,8 @@ function euro(v: unknown): string {
   if (v === null || v === undefined || v === "") return "";
   if (typeof v === "string") {
     const s = v.trim();
+    // si déjà formaté en € on le garde
+    if (/[€]/.test(s)) return s;
     const maybe = Number(s.replace(/[^\d.,-]/g, "").replace(",", "."));
     if (Number.isFinite(maybe)) {
       return maybe.toLocaleString("fr-FR", {
@@ -62,45 +65,94 @@ function euro(v: unknown): string {
         currency: "EUR",
       });
     }
-    if (/[€]/.test(s)) return s;
   }
   const n = Number(v);
   if (!Number.isFinite(n)) return String(v);
   return n.toLocaleString("fr-FR", { style: "currency", currency: "EUR" });
 }
 
-/** CSV parser tolérant (gère quotes et virgules internes) */
-function parseCSV(csvText: string): ContentRow[] {
-  const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (lines.length === 0) return [];
-  const split = (line: string): string[] => {
-    const re = /,(?=(?:[^"]*"[^"]*")*[^"]*$)/g;
-    return line
-      .split(re)
-      .map((c) => c.replace(/^"(.*)"$/s, "$1").replace(/""/g, `"`).trim());
-  };
-  const header = split(lines[0]);
-  const rows: ContentRow[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cols = split(lines[i]);
-    if (cols.length === 1 && cols[0] === "") continue;
-    const obj: Record<string, string> = {};
-    header.forEach((h, idx) => (obj[h] = cols[idx] ?? ""));
-    const r: ContentRow = {
-      Slug: obj["Slug"] ?? "",
-      Title: obj["Title"] ?? obj["Titre"] ?? "",
-      Subtitle: obj["Subtitle"] ?? obj["Sous-titre"] ?? "",
-      Hero: obj["Hero"] ?? obj["Hero "] ?? obj["Image"] ?? "",
-      Intro: obj["Intro"] ?? "",
-      Pros: obj["Pros"] ?? "",
-      Cons: obj["Cons"] ?? "",
-      ["How to"]: obj["How to"] ?? obj["How To"] ?? obj["HowTo"] ?? "",
-      ["Note globale (sur 5)"]:
-        (obj["Note globale (sur 5)"] ?? obj["Note"] ?? "").replace(",", "."),
-    };
-    rows.push(r);
+/** CSV parser robuste (gère guillemets, virgules, retours ligne dans champs) */
+function parseCSV(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = i + 1 < text.length ? text[i + 1] : "";
+
+    if (inQuotes) {
+      if (ch === '"' && next === '"') {
+        // guillemet échappé
+        field += '"';
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        field += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ",") {
+        row.push(field);
+        field = "";
+      } else if (ch === "\r") {
+        // ignore CR, on attend LF
+      } else if (ch === "\n") {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = "";
+      } else {
+        field += ch;
+      }
+    }
+  }
+  // dernier champ/ligne si absence de \n final
+  if (field.length > 0 || inQuotes || row.length > 0) {
+    row.push(field);
+    rows.push(row);
   }
   return rows;
+}
+
+function parseContentCSV(csvText: string): ContentRow[] {
+  const grid = parseCSV(csvText).filter((r) => r.length > 0 && r.join("").trim() !== "");
+  if (grid.length === 0) return [];
+  const header = grid[0];
+  const idx = (key: string): number =>
+    header.findIndex((h) => (h || "").trim().toLowerCase() === key.trim().toLowerCase());
+
+  const iSlug = idx("slug");
+  const iTitle = idx("title");
+  const iSubtitle = idx("subtitle");
+  const iHero = idx("hero");
+  const iIntro = idx("intro");
+  const iPros = idx("pros");
+  const iCons = idx("cons");
+  const iHow = idx("how to");
+  const iNote = idx("note globale (sur 5)");
+
+  const out: ContentRow[] = [];
+  for (let r = 1; r < grid.length; r++) {
+    const row = grid[r];
+    const get = (i: number): string => (i >= 0 && i < row.length ? (row[i] || "").trim() : "");
+    const o: ContentRow = {
+      Slug: get(iSlug),
+      Title: get(iTitle),
+      Subtitle: get(iSubtitle),
+      Hero: get(iHero),
+      Intro: get(iIntro),
+      Pros: get(iPros),
+      Cons: get(iCons),
+      ["How to"]: get(iHow),
+      ["Note globale (sur 5)"]: get(iNote).replace(",", "."),
+    };
+    if (o.Slug) out.push(o);
+  }
+  return out;
 }
 
 async function getOffers(): Promise<Offer[]> {
@@ -109,17 +161,17 @@ async function getOffers(): Promise<Offer[]> {
     "https://bootybeauty-nextjs.vercel.app";
   const res = await fetch(`${base}/api/offers`, { cache: "no-store" });
   if (!res.ok) return [];
-  const data = (await res.json()) as unknown;
+  const data = await res.json();
   return Array.isArray(data) ? (data as Offer[]) : [];
 }
 
-async function getContentBySlug(slug: string): Promise[ContentRow | undefined] {
+async function getContentBySlug(slug: string): Promise<ContentRow | undefined> {
   const csvUrl = process.env.SHEETS_CONTENT_CSV;
   if (!csvUrl) return undefined;
   const res = await fetch(csvUrl, { cache: "no-store" });
   if (!res.ok) return undefined;
   const text = await res.text();
-  const rows = parseCSV(text);
+  const rows = parseContentCSV(text);
   return rows.find((r) => (r.Slug ?? "").trim() === slug.trim());
 }
 
@@ -152,32 +204,35 @@ function drawPeaches(note?: string | number): React.ReactNode {
 
 type Params = { slug: string };
 
+// -------- PAGE ----------
 export default async function ProductPage({
   params,
 }: {
   params: Promise<Params>;
 }) {
-  // >>> différence clé : Next 15 peut passer params en Promise
+  // Next 15 peut fournir params en Promise
   const { slug } = await params;
 
-  // 1) Contenu (Intro/Pros/Cons/HowTo/Note…)
+  // 1) Contenu éditorial
   const content = await getContentBySlug(slug);
 
-  // 2) Offres (image/prix/affiliation/brand…)
+  // 2) Offres (prix, image, aff, brand…)
   const offers = await getOffers();
 
-  // Association par slug sur titre d’offre
+  // Assoc : match sur titre → slug
   const matchFromTitle = offers.find((o) =>
     o?.title ? slugify(o.title) === slug : false
   );
 
-  // Fallback tolérant
+  // Fallback tolérant : contient le slug ou le Title éditorial
   const matchFallback =
     matchFromTitle ||
     offers.find((o) => {
       const t = (o.title ?? "").toLowerCase();
       const s = slug.replace(/-/g, " ");
-      return t.includes(s) || (content?.Title && t.includes(content.Title.toLowerCase()));
+      const ok1 = t.includes(s);
+      const ok2 = content?.Title ? t.includes(content.Title.toLowerCase()) : false;
+      return ok1 || ok2;
     });
 
   const offer = matchFallback;
