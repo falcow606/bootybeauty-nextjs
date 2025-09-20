@@ -1,160 +1,217 @@
-export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
-import Image from 'next/image';
-import Link from 'next/link';
-import { notFound } from 'next/navigation';
-import { Bodoni_Moda, Nunito_Sans } from 'next/font/google';
+import * as React from "react";
+import Image from "next/image";
+import Link from "next/link";
 
-const bodoni = Bodoni_Moda({ subsets: ['latin'], style: ['normal'], weight: ['400','600','700'] });
-const nunito = Nunito_Sans({ subsets: ['latin'], weight: ['300','400','600','700'] });
+type KV = Record<string, unknown>;
 
-type Rec = Record<string, unknown>;
-type BlogPost = {
+type Post = {
   slug: string;
   title?: string;
   subtitle?: string;
   hero?: string;
-  date?: string;
-  tags?: string[];
-  html?: string;
+  intro?: string;
   body?: string;
+  author?: string;
+  date?: string; // ISO ou lisible
+  tags?: string[];
 };
 
-// Util: récupère une string tolérante aux variantes de clés
-function getStr(o: Rec | null | undefined, keys: string[]): string | undefined {
-  if (!o) return undefined;
-  for (const want of keys) {
-    const hit = Object.keys(o).find(k => k.trim().toLowerCase() === want.trim().toLowerCase());
-    const v = hit ? (o as Rec)[hit] : undefined;
-    if (typeof v === 'string' && v.trim()) return v.trim();
-    if (typeof v === 'number') return String(v);
+function getStr(obj: KV, keys: string[]): string | undefined {
+  for (const k of keys) {
+    // match exact
+    if (k in obj) {
+      const v = obj[k];
+      if (typeof v === "string" && v.trim()) return v.trim();
+      if (typeof v === "number") return String(v);
+    }
+    // match tolérant (espaces/casse)
+    const hit = Object.keys(obj).find(
+      (kk) => kk.trim().toLowerCase() === k.trim().toLowerCase()
+    );
+    if (hit) {
+      const v = obj[hit];
+      if (typeof v === "string" && v.trim()) return v.trim();
+      if (typeof v === "number") return String(v);
+    }
   }
   return undefined;
 }
 
-function normalizePost(r: Rec): BlogPost | null {
-  const slug = getStr(r, ['slug', 'Slug']);
-  if (!slug) return null;
+function coerceTags(v: unknown): string[] | undefined {
+  if (Array.isArray(v)) {
+    return v.map((x) => String(x)).filter(Boolean);
+  }
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return undefined;
+    return s.split(",").map((x) => x.trim()).filter(Boolean);
+  }
+  return undefined;
+}
 
-  const rawTags = getStr(r, ['tags', 'Tags']);
-  const tags = rawTags ? rawTags.split(',').map(t => t.trim()).filter(Boolean) : undefined;
-
+function mapRow(row: KV): Post {
   return {
-    slug,
-    title: getStr(r, ['title', 'Title', 'titre']),
-    subtitle: getStr(r, ['subtitle', 'Sous-titre', 'excerpt']),
-    hero: getStr(r, ['hero', 'Hero', 'image', 'Hero_Image', 'Hero URL']),
-    date: getStr(r, ['date', 'PublishedAt']),
-    tags,
-    html: getStr(r, ['html', 'HTML', 'ContentHTML']),
-    body: getStr(r, ['body', 'Body', 'Content', 'Markdown', 'Texte']),
+    slug: getStr(row, ["Slug", "slug"]) ?? "",
+    title: getStr(row, ["Title", "Titre"]),
+    subtitle: getStr(row, ["Subtitle", "Sous-titre", "Sous titre"]),
+    hero: getStr(row, ["Hero", "Image", "Hero_URL", "Hero URL"]),
+    intro: getStr(row, ["Intro", "Chapo"]),
+    body: getStr(row, ["Body", "Contenu", "Markdown", "HTML"]),
+    author: getStr(row, ["Author", "Auteur"]),
+    date: getStr(row, ["Date", "date", "PublishedAt"]),
+    tags: coerceTags(getStr(row, ["Tags", "Mots-clés", "Mots clés"])),
   };
 }
 
-// Si on n’a pas de HTML fourni, on transforme du texte en blocs <p>
-function bodyToHtml(body?: string): string | undefined {
-  if (!body) return undefined;
-  const blocks = body.replace(/\r/g, '').split(/\n{2,}/).map(b => b.trim()).filter(Boolean);
-  if (!blocks.length) return undefined;
-  return blocks.map(b => `<p>${b.replace(/\n/g, '<br/>')}</p>`).join('\n');
+/** Parse CSV minimal (gère les guillemets doubles) */
+function parseCsv(text: string): KV[] {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length === 0) return [];
+  const re = /,(?=(?:[^"]*"[^"]*")*[^"]*$)/;
+  const split = (line: string): string[] =>
+    line
+      .split(re)
+      .map((c) => c.replace(/^"(.*)"$/s, "$1").replace(/""/g, `"`).trim());
+  const header = split(lines[0]);
+  const out: KV[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = split(lines[i]);
+    const row: KV = {};
+    header.forEach((h, idx) => {
+      row[h] = cols[idx] ?? "";
+    });
+    out.push(row);
+  }
+  return out;
 }
 
-// On lit l’API interne pour rester aligné avec la liste /blog
-async function fetchPostBySlug(slug: string): Promise<BlogPost | null> {
-  // URL absolue pour éviter tout souci d’origin
-  const base =
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, '') ||
-    'https://bootybeauty-nextjs.vercel.app';
+async function fetchPosts(): Promise<Post[]> {
+  const url = process.env.N8N_BLOG_URL || process.env.SHEETS_BLOG_CSV;
+  if (!url) return [];
 
-  const url = `${base}/api/blog?slug=${encodeURIComponent(slug)}`;
+  const headers: Record<string, string> = {};
+  if (process.env.N8N_BLOG_KEY) headers["x-api-key"] = String(process.env.N8N_BLOG_KEY);
 
-  const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) return null;
+  // Pas de cache pour éviter les incohérences
+  const res = await fetch(url, { headers, cache: "no-store" });
+  if (!res.ok) return [];
 
-  const json = (await res.json()) as Rec | Rec[] | { items?: Rec[] } | { data?: Rec[] } | null;
-  let item: Rec | undefined;
-
-  if (!json) return null;
-  if (Array.isArray(json)) {
-    item = json[0];
-  } else if ('items' in json && Array.isArray((json as any).items)) {
-    item = (json as any).items[0];
-  } else if ('data' in json && Array.isArray((json as any).data)) {
-    item = (json as any).data[0];
+  // On essaye JSON, puis CSV
+  const ct = res.headers.get("content-type") || "";
+  if (ct.includes("application/json")) {
+    const json = (await res.json()) as unknown;
+    const items: KV[] = Array.isArray(json)
+      ? (json as KV[])
+      : ((json as KV)["items"] as KV[]) ||
+        ((json as KV)["data"] as KV[]) ||
+        [];
+    return items.map(mapRow).filter((p) => p.slug);
   } else {
-    item = json as Rec;
+    const text = await res.text();
+    const rows = parseCsv(text);
+    return rows.map(mapRow).filter((p) => p.slug);
   }
-
-  if (!item) return null;
-  return normalizePost(item);
 }
 
-export default async function BlogPostPage({ params }: { params: { slug: string } }) {
-  const { slug } = params;
+function toHtmlParagraphs(text?: string): React.ReactNode {
+  if (!text) return null;
+  const parts = text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  return parts.map((p, i) => (
+    <p key={i} className="leading-relaxed">
+      {p}
+    </p>
+  ));
+}
 
-  // Tente de charger via l’API interne
-  const post = await fetchPostBySlug(slug);
+export default async function BlogArticlePage({
+  params,
+}: {
+  params: { sulg: string };
+}) {
+  const slug = params.sulg;
+
+  const posts = await fetchPosts();
+  const post = posts.find((p) => p.slug === slug);
+
   if (!post) {
-    // 404 propre si l’article n’existe pas
-    notFound();
+    return (
+      <main className="mx-auto max-w-3xl px-6 py-16">
+        <h1 className="text-2xl font-semibold">Article introuvable</h1>
+        <p className="mt-4">
+          Cet article n’existe pas (ou plus).{" "}
+          <Link href="/blog" className="underline">
+            Revenir au blog
+          </Link>
+        </p>
+      </main>
+    );
   }
-
-  const safeHtml = post.html || bodyToHtml(post.body);
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-10">
-      {/* Titre + méta */}
-      <header className="mb-6">
-        <h1 className={`${bodoni.className} text-3xl md:text-4xl`}>
-          {post.title || slug.replace(/-/g, ' ')}
-        </h1>
-        {post.subtitle ? (
-          <p className={`${nunito.className} mt-2 text-lg opacity-80`}>{post.subtitle}</p>
-        ) : null}
-        <div className={`${nunito.className} mt-3 text-sm opacity-70 flex gap-3 flex-wrap`}>
-          {post.date ? <span>Publié le {post.date}</span> : null}
-          {post.tags && post.tags.length ? (
-            <span>
-              Tags : {post.tags.map((t) => (
-                <span key={t} className="mr-2">#{t}</span>
+    <main className="mx-auto max-w-3xl px-6 py-10">
+      <article className="space-y-6">
+        <header className="space-y-2">
+          <h1 className="text-3xl font-semibold">{post.title}</h1>
+          {post.subtitle && (
+            <p className="text-base opacity-80">{post.subtitle}</p>
+          )}
+          {(post.author || post.date) && (
+            <p className="text-sm opacity-70">
+              {post.author ? `Par ${post.author}` : ""}
+              {post.author && post.date ? " — " : ""}
+              {post.date || ""}
+            </p>
+          )}
+        </header>
+
+        {post.hero && (
+          <div className="overflow-hidden rounded-2xl border">
+            <Image
+              src={post.hero}
+              alt={post.title || "Image d’illustration"}
+              width={1600}
+              height={1000}
+              unoptimized
+              className="h-auto w-full object-cover"
+              priority
+            />
+          </div>
+        )}
+
+        {post.intro && (
+          <section className="space-y-3">{toHtmlParagraphs(post.intro)}</section>
+        )}
+
+        {post.body && (
+          <section className="prose max-w-none">
+            {toHtmlParagraphs(post.body)}
+          </section>
+        )}
+
+        {post.tags && post.tags.length > 0 && (
+          <footer className="pt-4">
+            <div className="flex flex-wrap gap-2">
+              {post.tags.map((t) => (
+                <span
+                  key={t}
+                  className="rounded-full border px-3 py-1 text-sm"
+                >
+                  #{t}
+                </span>
               ))}
-            </span>
-          ) : null}
-        </div>
-      </header>
+            </div>
+          </footer>
+        )}
+      </article>
 
-      {/* Hero */}
-      {post.hero ? (
-        <div className="mb-8">
-          <Image
-            src={post.hero}
-            alt={post.title || 'Illustration de l’article'}
-            width={1400}
-            height={900}
-            className="w-full rounded-3xl object-cover"
-            unoptimized
-            priority
-          />
-        </div>
-      ) : null}
-
-      {/* Contenu */}
-      {safeHtml ? (
-        <article
-          className={`${nunito.className} prose prose-neutral max-w-none`}
-          dangerouslySetInnerHTML={{ __html: safeHtml }}
-        />
-      ) : (
-        <p className={`${nunito.className} opacity-70`}>Contenu en cours de rédaction.</p>
-      )}
-
-      {/* Back */}
       <div className="mt-10">
-        <Link href="/blog" className={`${nunito.className} underline`}>
+        <Link href="/blog" className="underline">
           ← Retour au blog
         </Link>
       </div>
-    </div>
+    </main>
   );
 }
