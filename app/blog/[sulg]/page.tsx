@@ -21,13 +21,13 @@ type Post = {
 
 function getStr(obj: KV, keys: string[]): string | undefined {
   for (const k of keys) {
-    // match exact
+    // exact
     if (k in obj) {
       const v = obj[k];
       if (typeof v === "string" && v.trim()) return v.trim();
       if (typeof v === "number") return String(v);
     }
-    // match tolérant (espaces/casse)
+    // tolérant (espaces/casse)
     const hit = Object.keys(obj).find(
       (kk) => kk.trim().toLowerCase() === k.trim().toLowerCase()
     );
@@ -41,9 +41,7 @@ function getStr(obj: KV, keys: string[]): string | undefined {
 }
 
 function coerceTags(v: unknown): string[] | undefined {
-  if (Array.isArray(v)) {
-    return v.map((x) => String(x)).filter(Boolean);
-  }
+  if (Array.isArray(v)) return v.map(String).filter(Boolean);
   if (typeof v === "string") {
     const s = v.trim();
     if (!s) return undefined;
@@ -66,7 +64,7 @@ function mapRow(row: KV): Post {
   };
 }
 
-/** Parse CSV minimal (gère les guillemets doubles) */
+/** Parseur CSV minimal (supporte guillemets doubles). */
 function parseCsv(text: string): KV[] {
   const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
   if (lines.length === 0) return [];
@@ -74,7 +72,8 @@ function parseCsv(text: string): KV[] {
   const split = (line: string): string[] =>
     line
       .split(re)
-      .map((c) => c.replace(/^"(.*)"$/s, "$1").replace(/""/g, `"`).trim());
+      // pas de flag /s (compat build), on retire les quotes si présents
+      .map((c) => c.replace(/^"(.*)"$/, "$1").replace(/""/g, `"`).trim());
   const header = split(lines[0]);
   const out: KV[] = [];
   for (let i = 1; i < lines.length; i++) {
@@ -95,11 +94,9 @@ async function fetchPosts(): Promise<Post[]> {
   const headers: Record<string, string> = {};
   if (process.env.N8N_BLOG_KEY) headers["x-api-key"] = String(process.env.N8N_BLOG_KEY);
 
-  // Pas de cache pour éviter les incohérences
   const res = await fetch(url, { headers, cache: "no-store" });
   if (!res.ok) return [];
 
-  // On essaye JSON, puis CSV
   const ct = res.headers.get("content-type") || "";
   if (ct.includes("application/json")) {
     const json = (await res.json()) as unknown;
@@ -126,15 +123,16 @@ function toHtmlParagraphs(text?: string): React.ReactNode {
   ));
 }
 
+// ⬇️ ICI: params est un Promise dans Next 15 (App Router)
 export default async function BlogArticlePage({
   params,
 }: {
-  params: { sulg: string };
+  params: Promise<{ sulg: string }>;
 }) {
-  const slug = params.sulg;
+  const { sulg } = await params;
 
   const posts = await fetchPosts();
-  const post = posts.find((p) => p.slug === slug);
+  const post = posts.find((p) => p.slug === sulg);
 
   if (!post) {
     return (
