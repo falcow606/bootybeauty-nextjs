@@ -29,8 +29,8 @@ function truthy(v?: string) {
 // CSV parser tolérant (gère guillemets + retours à la ligne)
 function parseCSV(text: string): BlogRow[] {
   const rows: BlogRow[] = [];
-  const lines = text.split(/\r?\n/);
-  if (!lines.length) return rows;
+  const rawLines = text.split(/\r?\n/);
+  if (!rawLines.length) return rows;
 
   const splitLine = (line: string) => {
     const out: string[] = [];
@@ -40,7 +40,6 @@ function parseCSV(text: string): BlogRow[] {
       const ch = line[i];
       if (ch === '"') {
         if (inQuotes && i + 1 < line.length && line[i + 1] === '"') {
-          // double double-quote -> guillemet littéral
           cur += '"';
           i++;
         } else {
@@ -57,31 +56,31 @@ function parseCSV(text: string): BlogRow[] {
     return out.map((c) => c.replace(/^"(.*)"$/, '$1').replace(/""/g, '"').trim());
   };
 
-  // reconstitue les lignes “physiques” cassées à cause des champs multi-lignes
-  const physical: string[] = [];
+  // recolle les lignes physiques si un champ multi-ligne a “cassé” la ligne
+  const lines: string[] = [];
   let buf = '';
   let open = false;
-  for (const raw of lines) {
+  for (const raw of rawLines) {
     const q = (raw.match(/"/g) || []).length;
     if (!open) {
       buf = raw;
       open = q % 2 === 1;
     } else {
       buf += '\n' + raw;
-      open = open ? q % 2 !== 1 : false;
+      open = q % 2 === 0 ? false : true;
     }
     if (!open) {
-      physical.push(buf);
+      lines.push(buf);
       buf = '';
     }
   }
-  if (buf) physical.push(buf);
+  if (buf) lines.push(buf);
 
-  const headerCells = splitLine(physical[0] || '');
+  const headerCells = splitLine(lines[0] || '');
   const header = headerCells.map((h) => h.trim());
 
-  for (let i = 1; i < physical.length; i++) {
-    const cells = splitLine(physical[i]);
+  for (let i = 1; i < lines.length; i++) {
+    const cells = splitLine(lines[i]);
     if (cells.every((c) => !c)) continue;
     const obj: Record<string, string> = {};
     for (let c = 0; c < header.length; c++) {
@@ -103,27 +102,25 @@ async function getBlogRowBySlug(s: string): Promise<BlogRow | null> {
   const rows = parseCSV(csv);
   const needle = s.trim().toLowerCase();
 
-  // 1) match strict sur Slug
+  // match strict sur Slug
   let row = rows.find((r) => (r.Slug || '').trim().toLowerCase() === needle);
 
-  // 2) fallback: try sans accents / espaces fantômes
+  // fallback : normalisation sans accents
   if (!row) {
     const norm = (x: string) =>
       x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
     row = rows.find((r) => norm(r.Slug || '') === norm(needle));
   }
 
-  // 3) filtre Published=oui si présent
-  if (row && row.Published && !truthy(row.Published)) {
-    return null;
-  }
+  if (row && row.Published && !truthy(row.Published)) return null;
   return row || null;
 }
 
 export async function generateMetadata(
-  { params }: { params: { sulg: string } }
+  { params }: { params: Promise<{ sulg: string }> }
 ): Promise<Metadata> {
-  const data = await getBlogRowBySlug(params.sulg);
+  const { sulg } = await params;
+  const data = await getBlogRowBySlug(sulg);
   const title = data?.Title || 'Article';
   const desc = data?.Subtitle || 'Article du blog Booty & Cutie.';
   const img = data?.Hero;
@@ -139,8 +136,11 @@ export async function generateMetadata(
   };
 }
 
-export default async function BlogPostPage({ params }: { params: { sulg: string } }) {
-  const data = await getBlogRowBySlug(params.sulg);
+export default async function BlogPostPage(
+  { params }: { params: Promise<{ sulg: string }> }
+) {
+  const { sulg } = await params;
+  const data = await getBlogRowBySlug(sulg);
 
   if (!data) {
     return (
@@ -162,7 +162,6 @@ export default async function BlogPostPage({ params }: { params: { sulg: string 
   const date = data.Date || '';
   const tags = (data.Tags || '').split(',').map((t) => t.trim()).filter(Boolean);
   const body = (data.Body || '')
-    // transforme des doubles sauts en paragraphes
     .split(/\n{2,}/)
     .map((p) => p.trim())
     .filter(Boolean);
