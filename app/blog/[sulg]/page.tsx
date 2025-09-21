@@ -1,155 +1,251 @@
-export const dynamic = 'force-dynamic';
-export const runtime = 'nodejs';
+// app/blog/[sulg]/page.tsx
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
-import { notFound } from 'next/navigation';
-import Image from 'next/image';
-import Link from 'next/link';
-import { Bodoni_Moda, Nunito_Sans } from 'next/font/google';
+import * as React from "react";
+import Link from "next/link";
+import Image from "next/image";
+import type { Metadata } from "next";
+import { Bodoni_Moda, Nunito_Sans } from "next/font/google";
 
-const bodoni = Bodoni_Moda({ subsets: ['latin'], style: ['normal'], weight: ['400','600','700'] });
-const nunito = Nunito_Sans({ subsets: ['latin'], weight: ['300','400','600','700'] });
+const bodoni = Bodoni_Moda({ subsets: ["latin"], style: ["normal"], weight: ["400", "600", "700"] });
+const nunito = Nunito_Sans({ subsets: ["latin"], weight: ["300", "400", "600", "700"] });
 
-type Row = Record<string, string>;
+/* ------------------------------------------------------------------ */
+/* Types                                                              */
+/* ------------------------------------------------------------------ */
+
+type CSVRow = Record<string, string>;
 type Post = {
   slug: string;
   title: string;
-  excerpt?: string;
-  image?: string;
-  content?: string; // HTML ou markdown déjà “à plat” si tu en fournis
-  tags?: string[];
+  subtitle?: string;
+  hero?: string;
+  html?: string; // contenu HTML déjà prêt (optionnel)
+  intro?: string;
+  body?: string; // markdown/texte (optionnel)
   date?: string;
+  tags?: string[];
 };
 
-function normalize(input: string | undefined | null): string {
-  if (!input) return '';
-  return String(input).trim();
-}
-function slugify(input: string): string {
-  const s = input
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase().replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return s || 'article';
+/* ------------------------------------------------------------------ */
+/* Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+function pick(obj: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const k of keys) {
+    // correspondance tolérante sur le nom de colonne (trim + case-insensitive)
+    const hit = Object.keys(obj).find((kk) => kk.trim().toLowerCase() === k.trim().toLowerCase());
+    if (!hit) continue;
+    const v = obj[hit];
+    if (typeof v === "string") {
+      const t = v.trim();
+      if (t.length) return t;
+    }
+  }
+  return undefined;
 }
 
-function parseCsv(text: string): Row[] {
-  const rows: Row[] = [];
-  const lines = text.split(/\r?\n/);
-  if (!lines.length) return rows;
+// CSV tolérant (gère guillemets, virgules, retours à la ligne)
+function parseCSV(text: string): CSVRow[] {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length === 0) return [];
 
   const split = (line: string): string[] => {
-    const re = /,(?=(?:[^"]*"[^"]*")*[^"]*$)/g;
+    const re = /,(?=(?:(?:[^"]*"){2})*[^"]*$)/g;
     return line
       .split(re)
-      .map((c) => c.replace(/^"(.*)"$/s, '$1').replace(/""/g, '"').trim());
+      .map((c) => c.replace(/^"(.*)"$/s, "$1").replace(/""/g, `"`).trim());
   };
 
-  const header = split(lines[0]).map((h) => h.trim());
+  const header = split(lines[0]);
+  const rows: CSVRow[] = [];
   for (let i = 1; i < lines.length; i++) {
-    const raw = lines[i];
-    if (!raw || !raw.trim()) continue;
-    const cols = split(raw);
-    const row: Row = {};
-    header.forEach((h, idx) => (row[h] = cols[idx] ?? ''));
-    if (Object.values(row).some((v) => normalize(v) !== '')) rows.push(row);
+    const cols = split(lines[i]);
+    const row: CSVRow = {};
+    header.forEach((h, idx) => {
+      row[h] = cols[idx] ?? "";
+    });
+    rows.push(row);
   }
   return rows;
 }
 
-function toPost(row: Row): Post {
-  const rawSlug   = normalize(row['Slug'] || row['slug'] || '');
-  const title     = normalize(row['Title'] || row['Titre'] || row['title'] || '');
-  const excerpt   = normalize(row['Excerpt'] || row['Intro'] || row['Résumé'] || row['excerpt'] || row['intro'] || '');
-  const image     = normalize(row['Image'] || row['Hero'] || row['Cover'] || row['Image_URL'] || '');
-  const content   = normalize(row['Content'] || row['HTML'] || row['Texte'] || row['content'] || '');
-  const tagsStr   = normalize(row['Tags'] || row['tags'] || '');
-  const date      = normalize(row['Date'] || row['date'] || '');
-
-  const slug = rawSlug || slugify(title);
-  const tags = tagsStr ? tagsStr.split(',').map((t) => t.trim()).filter(Boolean) : [];
-
-  return { slug, title, excerpt, image, content, tags, date };
-}
-
-async function getPostBySlug(slug: string): Promise<Post | null> {
-  const url = process.env.SHEETS_BLOG_CSV;
-  if (!url) return null;
+async function fetchBlogCSV(): Promise<CSVRow[]> {
+  const url = process.env.SHEETS_BLOG_CSV || process.env.N8N_BLOG_URL;
+  if (!url) return [];
+  const headers: Record<string, string> = {};
+  if (process.env.N8N_BLOG_KEY) headers["x-api-key"] = String(process.env.N8N_BLOG_KEY);
 
   const init: RequestInit & { next?: { revalidate?: number } } =
-    process.env.VERCEL_ENV === 'preview' || process.env.NODE_ENV !== 'production'
-      ? { cache: 'no-store' }
-      : { next: { revalidate: 1800 } };
+    process.env.VERCEL_ENV === "preview" || process.env.NODE_ENV !== "production"
+      ? { headers, cache: "no-store" }
+      : { headers, next: { revalidate: 900 } };
 
   const res = await fetch(url, init);
-  if (!res.ok) return null;
+  if (!res.ok) return [];
+
+  // Accepte JSON {items:[...]} ou CSV brut
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    const j = (await res.json()) as { items?: CSVRow[]; data?: CSVRow[] } | CSVRow[];
+    if (Array.isArray(j)) return j;
+    if (j?.items && Array.isArray(j.items)) return j.items;
+    if (j?.data && Array.isArray(j.data)) return j.data;
+    return [];
+  }
   const text = await res.text();
-  const rows = parseCsv(text);
-  const posts = rows.map(toPost);
-
-  // match strict d’abord, puis fallback slugifié
-  const direct = posts.find((p) => p.slug === slug);
-  if (direct) return direct;
-
-  const fallback = posts.find((p) => slugify(p.slug) === slug || slugify(p.title) === slug);
-  return fallback ?? null;
+  return parseCSV(text);
 }
 
+function mapRowToPost(row: CSVRow): Post | null {
+  const slug = pick(row, ["slug", "Slug"]);
+  const title = pick(row, ["title", "Title"]);
+  if (!slug || !title) return null;
 
-type PageProps = { params: { slug: string } };
+  const subtitle = pick(row, ["subtitle", "Subtitle"]);
+  const hero = pick(row, ["hero", "Hero", "Hero_Image", "Hero URL", "Hero URL ", "Image"]);
+  const html = pick(row, ["html", "HTML"]);
+  const intro = pick(row, ["intro", "Intro", "Description"]);
+  const body = pick(row, ["body", "Body", "Contenu"]);
+  const date = pick(row, ["date", "Date"]);
+  const tagsRaw = pick(row, ["tags", "Tags"]);
+  const tags = tagsRaw ? tagsRaw.split(",").map((t) => t.trim()).filter(Boolean) : [];
 
+  return { slug, title, subtitle, hero, html, intro, body, date, tags };
+}
+
+function toHtmlParagraphs(text?: string): React.ReactNode {
+  if (!text) return null;
+  return text
+    .split(/\n{2,}/)
+    .map((p, i) => (
+      <p key={i} className={`${nunito.className} leading-relaxed`}>
+        {p.trim()}
+      </p>
+    ));
+}
+
+/* ------------------------------------------------------------------ */
+/* Metadata dynamique (facultatif)                                    */
+/* ------------------------------------------------------------------ */
+
+export async function generateMetadata(
+  { params }: { params: Promise<{ sulg: string }> }
+): Promise<Metadata> {
+  const { sulg } = await params;
+  const rows = await fetchBlogCSV();
+  const posts = rows.map(mapRowToPost).filter((p): p is Post => p !== null);
+  const post = posts.find(
+    (p) => p.slug.trim().toLowerCase() === sulg.trim().toLowerCase()
+  );
+  const title = post?.title ? `${post.title} — Le Blog` : "Article — Le Blog";
+  const description = post?.subtitle || post?.intro || "Article du blog beauté Booty & Cutie.";
+  const images = post?.hero ? [post.hero] : undefined;
+
+  return {
+    title,
+    description,
+    openGraph: { title, description, images },
+    twitter: { card: "summary_large_image", title, description, images },
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Page                                                                */
+/* ------------------------------------------------------------------ */
+
+type PageProps = { params: Promise<{ sulg: string }> };
 
 export default async function BlogPostPage({ params }: PageProps) {
-  const slug = params.slug;
-  const post = await getPostBySlug(slug);
-  if (!post) notFound();
+  const { sulg } = await params;
+
+  const rows = await fetchBlogCSV();
+  const posts = rows.map(mapRowToPost).filter((p): p is Post => p !== null);
+
+  const post =
+    posts.find((p) => p.slug.trim().toLowerCase() === sulg.trim().toLowerCase()) ||
+    null;
+
+  if (!post) {
+    return (
+      <main className="mx-auto max-w-3xl px-6 py-16">
+        <h1 className={`${bodoni.className} mb-4 text-3xl`}>Article introuvable</h1>
+        <p className={`${nunito.className} mb-6 opacity-80`}>
+          Cet article n’existe pas (ou plus).
+        </p>
+        <Link href="/blog" className="underline">
+          Revenir au blog
+        </Link>
+      </main>
+    );
+  }
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-12">
-      <Link href="/blog" className={`${nunito.className} text-sm underline`}>← Retour au blog</Link>
+    <div className="min-h-screen w-full" style={{ backgroundColor: "#FAF0E6" }}>
+      <article className="mx-auto max-w-4xl px-6 py-12">
+        <header className="mb-8">
+          <h1 className={`${bodoni.className} text-4xl md:text-5xl`} style={{ color: "#333" }}>
+            {post.title}
+          </h1>
+          {post.subtitle && (
+            <p className={`${nunito.className} mt-2 text-lg opacity-80`} style={{ color: "#333" }}>
+              {post.subtitle}
+            </p>
+          )}
+        </header>
 
-      <h1 className={`${bodoni.className} mt-4 text-3xl md:text-4xl`} style={{ color: '#333' }}>
-        {post.title}
-      </h1>
-      {post.date ? (
-        <p className={`${nunito.className} mt-2 text-sm opacity-70`}>{new Date(post.date).toLocaleDateString('fr-FR')}</p>
-      ) : null}
+        {post.hero && (
+          <div className="mb-8 overflow-hidden rounded-3xl bg-white p-2 shadow">
+            <Image
+              src={post.hero}
+              alt={post.title}
+              width={1200}
+              height={675}
+              unoptimized
+              className="h-auto w-full rounded-2xl object-cover"
+              priority
+            />
+          </div>
+        )}
 
-      {post.image ? (
-        <div className="mt-6 overflow-hidden rounded-3xl bg-white shadow-md">
-          <Image
-            src={post.image}
-            alt={post.title}
-            width={1200}
-            height={800}
-            unoptimized
-            className="aspect-[4/3] w-full object-cover"
-          />
+        {/* Contenu : HTML prioritaire, sinon intro + body en <p> */}
+        <section className="prose prose-p:my-4 max-w-none">
+          {post.html ? (
+            <div
+              className={`${nunito.className} leading-relaxed`}
+              style={{ color: "#333" }}
+              dangerouslySetInnerHTML={{ __html: post.html }}
+            />
+          ) : (
+            <>
+              {toHtmlParagraphs(post.intro)}
+              {toHtmlParagraphs(post.body)}
+            </>
+          )}
+        </section>
+
+        {/* Tags */}
+        {post.tags && post.tags.length > 0 && (
+          <div className="mt-8 flex flex-wrap gap-2">
+            {post.tags.map((t) => (
+              <span
+                key={t}
+                className={`${nunito.className} inline-block rounded-full border px-3 py-1 text-sm`}
+                style={{ borderColor: "#EBC8B2", color: "#333", backgroundColor: "#FAF0E6" }}
+              >
+                #{t}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-10">
+          <Link href="/blog" className={`${nunito.className} underline`}>
+            ← Retour aux articles
+          </Link>
         </div>
-      ) : null}
-
-      {post.excerpt ? (
-        <p className={`${nunito.className} mt-6 text-lg`} style={{ color: '#333' }}>
-          {post.excerpt}
-        </p>
-      ) : null}
-
-      {post.content ? (
-        <article
-          className={`${nunito.className} prose prose-neutral mt-6 max-w-none`}
-          // si ton “Content” est en HTML basique :
-          dangerouslySetInnerHTML={{ __html: post.content }}
-        />
-      ) : null}
-
-      {post.tags?.length ? (
-        <div className="mt-8 flex flex-wrap gap-2">
-          {post.tags.map((t) => (
-            <span key={t} className="rounded-full border px-3 py-1 text-sm" style={{ borderColor: '#EBC8B2', color: '#333' }}>
-              #{t}
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </main>
+      </article>
+    </div>
   );
 }
