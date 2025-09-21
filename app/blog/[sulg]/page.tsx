@@ -94,7 +94,9 @@ async function getPostBySlug(slug: string): Promise<Post | null> {
   return fallback ?? null;
 }
 
+
 type PageProps = { params: { slug: string } };
+
 
 export default async function BlogPostPage({ params }: PageProps) {
   const slug = params.slug;
