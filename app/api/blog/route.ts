@@ -12,29 +12,40 @@ function truthy(v: unknown): boolean {
   return ["oui", "yes", "true", "1", "y", "ok"].includes(s);
 }
 
+// CSV robuste (guillemets, virgules, retours à la ligne)
 function parseCSV(text: string): Row[] {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (!lines.length) return [];
+  const lines = text.split(/\r?\n/);
+  if (lines.length === 0) return [];
+
+  const nonEmpty = lines.filter((l, idx) => idx === 0 || l.trim().length > 0);
+  if (nonEmpty.length === 0) return [];
+
   const split = (line: string): string[] => {
     const re = /,(?=(?:(?:[^"]*"){2})*[^"]*$)/g;
     return line
       .split(re)
       .map((c) => c.replace(/^"([\s\S]*)"$/, "$1").replace(/""/g, `"`).trim());
   };
-  const header = split(lines[0]);
+
+  const header = split(nonEmpty[0]).map((h) => h.replace(/^\uFEFF/, "")); // retire BOM
   const out: Row[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cols = split(lines[i]);
+
+  for (let i = 1; i < nonEmpty.length; i++) {
+    const cols = split(nonEmpty[i]);
     const row: Row = {};
-    header.forEach((h, idx) => (row[h] = cols[idx] ?? ""));
+    header.forEach((h, idx) => {
+      row[h] = cols[idx] ?? "";
+    });
     out.push(row);
   }
   return out;
 }
 
+// Récupère la valeur d’une clé parmi plusieurs libellés équivalents (trim/casse tolérés)
 function pick(obj: Record<string, unknown>, keys: string[]): string | undefined {
+  const allKeys = Object.keys(obj);
   for (const k of keys) {
-    const hit = Object.keys(obj).find(
+    const hit = allKeys.find(
       (kk) => kk.trim().toLowerCase() === k.trim().toLowerCase()
     );
     if (!hit) continue;
@@ -69,7 +80,7 @@ async function fetchSource(): Promise<Row[]> {
   return parseCSV(text);
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   if (!process.env.SHEETS_BLOG_CSV && !process.env.N8N_BLOG_URL) {
     return new Response(
       JSON.stringify({
@@ -81,28 +92,36 @@ export async function GET() {
     );
   }
 
+  const url = new URL(req.url);
+  const showAll = url.searchParams.get("all") === "1"; // bypass filtre Published si ?all=1
+  const diag = url.searchParams.get("diag") === "1";   // inclure publishedRaw/isPublished
+
   try {
     const rows = await fetchSource();
+
     const list = rows
       .map((r) => {
-        const slug = pick(r, ["slug", "Slug"]);
-        const title = pick(r, ["title", "Title"]);
+        const slug = pick(r as any, ["slug", "Slug"]);
+        const title = pick(r as any, ["title", "Title"]);
         if (!slug || !title) return null;
 
-        const published = pick(r, ["Published", "published"]);
-        const isPub = truthy(published);
-        if (!isPub) return null;
+        const publishedRaw =
+          pick(r as any, ["Published", "published", "Publié", "publie"]) ?? "";
+        const isPublished = truthy(publishedRaw);
 
-        const cover = pick(r, ["Cover", "Hero", "Image"]);
-        const subtitle = pick(r, ["Subtitle", "subtitle"]);
-        const excerpt = pick(r, ["Excerpt", "excerpt"]);
-        const date = pick(r, ["Date", "date"]);
-        const tags = (pick(r, ["Tags", "tags"]) || "")
+        if (!showAll && !isPublished) return null;
+
+        const cover = pick(r as any, ["Cover", "Hero", "Hero_Image", "Image"]);
+        const subtitle = pick(r as any, ["Subtitle", "subtitle"]);
+        const excerpt = pick(r as any, ["Excerpt", "excerpt", "Intro", "intro"]);
+        const date = pick(r as any, ["Date", "date"]);
+        const tags = (pick(r as any, ["Tags", "tags"]) || "")
           .split(",")
           .map((t) => t.trim())
           .filter(Boolean);
 
-        return { slug, title, subtitle, excerpt, cover, date, tags };
+        const base = { slug, title, subtitle, excerpt, cover, date, tags };
+        return diag ? { ...base, publishedRaw, isPublished } : base;
       })
       .filter(Boolean);
 
@@ -110,7 +129,7 @@ export async function GET() {
       status: 200,
       headers: { "content-type": "application/json" },
     });
-  } catch {
+  } catch (e) {
     return new Response(
       JSON.stringify({ ok: false, error: "blog_fetch_failed" }),
       { status: 500, headers: { "content-type": "application/json" } }
