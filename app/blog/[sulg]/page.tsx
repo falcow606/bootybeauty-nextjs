@@ -21,7 +21,7 @@ type Post = {
   title: string;
   subtitle?: string;
   hero?: string;
-  html?: string; // contenu HTML déjà prêt (optionnel)
+  html?: string; // contenu HTML (optionnel)
   intro?: string;
   body?: string; // markdown/texte (optionnel)
   date?: string;
@@ -34,7 +34,6 @@ type Post = {
 
 function pick(obj: Record<string, unknown>, keys: string[]): string | undefined {
   for (const k of keys) {
-    // correspondance tolérante sur le nom de colonne (trim + case-insensitive)
     const hit = Object.keys(obj).find((kk) => kk.trim().toLowerCase() === k.trim().toLowerCase());
     if (!hit) continue;
     const v = obj[hit];
@@ -46,7 +45,7 @@ function pick(obj: Record<string, unknown>, keys: string[]): string | undefined 
   return undefined;
 }
 
-// CSV tolérant (gère guillemets, virgules, retours à la ligne)
+// CSV tolérant (gère guillemets, virgules, retours à la ligne) — sans flag 's'
 function parseCSV(text: string): CSVRow[] {
   const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
   if (lines.length === 0) return [];
@@ -55,7 +54,8 @@ function parseCSV(text: string): CSVRow[] {
     const re = /,(?=(?:(?:[^"]*"){2})*[^"]*$)/g;
     return line
       .split(re)
-      .map((c) => c.replace(/^"(.*)"$/s, "$1").replace(/""/g, `"`).trim());
+      // Remplace le dotAll par une classe compatible : /^"([\s\S]*)"$/
+      .map((c) => c.replace(/^"([\s\S]*)"$/, "$1").replace(/""/g, `"`).trim());
   };
 
   const header = split(lines[0]);
@@ -85,7 +85,6 @@ async function fetchBlogCSV(): Promise<CSVRow[]> {
   const res = await fetch(url, init);
   if (!res.ok) return [];
 
-  // Accepte JSON {items:[...]} ou CSV brut
   const contentType = res.headers.get("content-type") || "";
   if (contentType.includes("application/json")) {
     const j = (await res.json()) as { items?: CSVRow[]; data?: CSVRow[] } | CSVRow[];
@@ -104,7 +103,7 @@ function mapRowToPost(row: CSVRow): Post | null {
   if (!slug || !title) return null;
 
   const subtitle = pick(row, ["subtitle", "Subtitle"]);
-  const hero = pick(row, ["hero", "Hero", "Hero_Image", "Hero URL", "Hero URL ", "Image"]);
+  const hero = pick(row, ["hero", "Hero", "Hero_Image", "Hero URL", "Image"]);
   const html = pick(row, ["html", "HTML"]);
   const intro = pick(row, ["intro", "Intro", "Description"]);
   const body = pick(row, ["body", "Body", "Contenu"]);
@@ -127,7 +126,7 @@ function toHtmlParagraphs(text?: string): React.ReactNode {
 }
 
 /* ------------------------------------------------------------------ */
-/* Metadata dynamique (facultatif)                                    */
+/* Metadata dynamique                                                 */
 /* ------------------------------------------------------------------ */
 
 export async function generateMetadata(
@@ -136,9 +135,7 @@ export async function generateMetadata(
   const { sulg } = await params;
   const rows = await fetchBlogCSV();
   const posts = rows.map(mapRowToPost).filter((p): p is Post => p !== null);
-  const post = posts.find(
-    (p) => p.slug.trim().toLowerCase() === sulg.trim().toLowerCase()
-  );
+  const post = posts.find((p) => p.slug.trim().toLowerCase() === sulg.trim().toLowerCase());
   const title = post?.title ? `${post.title} — Le Blog` : "Article — Le Blog";
   const description = post?.subtitle || post?.intro || "Article du blog beauté Booty & Cutie.";
   const images = post?.hero ? [post.hero] : undefined;
@@ -152,7 +149,7 @@ export async function generateMetadata(
 }
 
 /* ------------------------------------------------------------------ */
-/* Page                                                                */
+/* Page                                                               */
 /* ------------------------------------------------------------------ */
 
 type PageProps = { params: Promise<{ sulg: string }> };
@@ -209,7 +206,6 @@ export default async function BlogPostPage({ params }: PageProps) {
           </div>
         )}
 
-        {/* Contenu : HTML prioritaire, sinon intro + body en <p> */}
         <section className="prose prose-p:my-4 max-w-none">
           {post.html ? (
             <div
@@ -225,7 +221,6 @@ export default async function BlogPostPage({ params }: PageProps) {
           )}
         </section>
 
-        {/* Tags */}
         {post.tags && post.tags.length > 0 && (
           <div className="mt-8 flex flex-wrap gap-2">
             {post.tags.map((t) => (
