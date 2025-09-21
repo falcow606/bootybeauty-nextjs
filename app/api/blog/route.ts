@@ -14,7 +14,7 @@ type ApiItem = {
   cover?: string;
   date?: string;
   tags: string[];
-  // champs diag optionnels quand ?diag=1
+  // diag facultatif
   publishedRaw?: string;
   isPublished?: boolean;
 };
@@ -24,39 +24,76 @@ function truthy(v: unknown): boolean {
   if (typeof v === "number") return v > 0;
   if (v == null) return false;
   const s = String(v).trim().toLowerCase();
-  return ["oui", "yes", "true", "1", "y", "ok"].includes(s);
+  return s === "oui" || s === "yes" || s === "true" || s === "1" || s === "y" || s === "ok";
 }
 
-/** CSV robuste (guillemets, virgules, retours à la ligne) */
+/** Parser CSV RFC 4180 : gère virgules ET retours-ligne dans les champs entre guillemets */
 function parseCSV(text: string): Row[] {
-  const lines = text.split(/\r?\n/);
-  if (lines.length === 0) return [];
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
 
-  const nonEmpty = lines.filter((l, idx) => idx === 0 || l.trim().length > 0);
-  if (nonEmpty.length === 0) return [];
+  // Retire BOM éventuel
+  if (text.charCodeAt(0) === 0xfeff) {
+    text = text.slice(1);
+  }
 
-  const split = (line: string): string[] => {
-    const re = /,(?=(?:(?:[^"]*"){2})*[^"]*$)/g;
-    return line
-      .split(re)
-      .map((c) => c.replace(/^"([\s\S]*)"$/, "$1").replace(/""/g, `"`).trim());
-  };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
 
-  const header = split(nonEmpty[0]).map((h) => h.replace(/^\uFEFF/, "")); // retire BOM si présent
+    if (inQuotes) {
+      if (c === '"') {
+        const next = text[i + 1];
+        if (next === '"') {
+          field += '"'; // échappement "" => "
+          i++;
+        } else {
+          inQuotes = false; // fin des guillemets
+        }
+      } else {
+        field += c; // tout passe tel quel en mode quotes
+      }
+    } else {
+      if (c === '"') {
+        inQuotes = true;
+      } else if (c === ",") {
+        row.push(field.trim());
+        field = "";
+      } else if (c === "\r") {
+        // ignore CR, on traitera LF
+      } else if (c === "\n") {
+        row.push(field.trim());
+        rows.push(row);
+        row = [];
+        field = "";
+      } else {
+        field += c;
+      }
+    }
+  }
+  // flush final
+  row.push(field.trim());
+  rows.push(row);
+
+  if (rows.length === 0) return [];
+
+  const header = rows[0];
   const out: Row[] = [];
-
-  for (let i = 1; i < nonEmpty.length; i++) {
-    const cols = split(nonEmpty[i]);
-    const row: Row = {};
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    // ignorer lignes vides de fin
+    if (r.length === 1 && r[0] === "") continue;
+    const o: Row = {};
     header.forEach((h, idx) => {
-      row[h] = cols[idx] ?? "";
+      o[h] = r[idx] ?? "";
     });
-    out.push(row);
+    out.push(o);
   }
   return out;
 }
 
-/** Récupère la valeur d’une clé parmi plusieurs libellés équivalents (trim/casse tolérés) */
+/** Récupère une valeur en étant tolérant au libellé (casse/espaces) */
 function pickCaseInsensitive(row: Row, keys: string[]): string | undefined {
   const allKeys = Object.keys(row);
   for (const k of keys) {
@@ -82,7 +119,6 @@ async function fetchSource(): Promise<Row[]> {
 
   const ct = res.headers.get("content-type") || "";
   if (ct.includes("application/json")) {
-    // j peut être un tableau ou un objet { items | data }
     const j = (await res.json()) as { items?: Row[]; data?: Row[] } | Row[];
     if (Array.isArray(j)) return j;
     if (j?.items && Array.isArray(j.items)) return j.items;
@@ -108,8 +144,8 @@ export async function GET(req: Request) {
   }
 
   const url = new URL(req.url);
-  const showAll = url.searchParams.get("all") === "1"; // bypass filtre Published si ?all=1
-  const withDiag = url.searchParams.get("diag") === "1"; // inclure publishedRaw/isPublished
+  const showAll = url.searchParams.get("all") === "1";
+  const withDiag = url.searchParams.get("diag") === "1";
 
   try {
     const rows = await fetchSource();
