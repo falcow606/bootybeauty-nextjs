@@ -2,7 +2,22 @@
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+/* ---------------------------- Types & helpers ---------------------------- */
+
 type Row = Record<string, string>;
+
+type ApiItem = {
+  slug: string;
+  title: string;
+  subtitle?: string;
+  excerpt?: string;
+  cover?: string;
+  date?: string;
+  tags: string[];
+  // champs diag optionnels quand ?diag=1
+  publishedRaw?: string;
+  isPublished?: boolean;
+};
 
 function truthy(v: unknown): boolean {
   if (typeof v === "boolean") return v;
@@ -12,7 +27,7 @@ function truthy(v: unknown): boolean {
   return ["oui", "yes", "true", "1", "y", "ok"].includes(s);
 }
 
-// CSV robuste (guillemets, virgules, retours à la ligne)
+/** CSV robuste (guillemets, virgules, retours à la ligne) */
 function parseCSV(text: string): Row[] {
   const lines = text.split(/\r?\n/);
   if (lines.length === 0) return [];
@@ -27,7 +42,7 @@ function parseCSV(text: string): Row[] {
       .map((c) => c.replace(/^"([\s\S]*)"$/, "$1").replace(/""/g, `"`).trim());
   };
 
-  const header = split(nonEmpty[0]).map((h) => h.replace(/^\uFEFF/, "")); // retire BOM
+  const header = split(nonEmpty[0]).map((h) => h.replace(/^\uFEFF/, "")); // retire BOM si présent
   const out: Row[] = [];
 
   for (let i = 1; i < nonEmpty.length; i++) {
@@ -41,19 +56,16 @@ function parseCSV(text: string): Row[] {
   return out;
 }
 
-// Récupère la valeur d’une clé parmi plusieurs libellés équivalents (trim/casse tolérés)
-function pick(obj: Record<string, unknown>, keys: string[]): string | undefined {
-  const allKeys = Object.keys(obj);
+/** Récupère la valeur d’une clé parmi plusieurs libellés équivalents (trim/casse tolérés) */
+function pickCaseInsensitive(row: Row, keys: string[]): string | undefined {
+  const allKeys = Object.keys(row);
   for (const k of keys) {
     const hit = allKeys.find(
       (kk) => kk.trim().toLowerCase() === k.trim().toLowerCase()
     );
     if (!hit) continue;
-    const v = obj[hit];
-    if (typeof v === "string") {
-      const t = v.trim();
-      if (t) return t;
-    }
+    const t = row[hit].trim();
+    if (t) return t;
   }
   return undefined;
 }
@@ -70,6 +82,7 @@ async function fetchSource(): Promise<Row[]> {
 
   const ct = res.headers.get("content-type") || "";
   if (ct.includes("application/json")) {
+    // j peut être un tableau ou un objet { items | data }
     const j = (await res.json()) as { items?: Row[]; data?: Row[] } | Row[];
     if (Array.isArray(j)) return j;
     if (j?.items && Array.isArray(j.items)) return j.items;
@@ -79,6 +92,8 @@ async function fetchSource(): Promise<Row[]> {
   const text = await res.text();
   return parseCSV(text);
 }
+
+/* --------------------------------- Route -------------------------------- */
 
 export async function GET(req: Request) {
   if (!process.env.SHEETS_BLOG_CSV && !process.env.N8N_BLOG_URL) {
@@ -94,42 +109,43 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const showAll = url.searchParams.get("all") === "1"; // bypass filtre Published si ?all=1
-  const diag = url.searchParams.get("diag") === "1";   // inclure publishedRaw/isPublished
+  const withDiag = url.searchParams.get("diag") === "1"; // inclure publishedRaw/isPublished
 
   try {
     const rows = await fetchSource();
 
-    const list = rows
-      .map((r) => {
-        const slug = pick(r as any, ["slug", "Slug"]);
-        const title = pick(r as any, ["title", "Title"]);
+    const list: ApiItem[] = rows
+      .map((r): ApiItem | null => {
+        const slug = pickCaseInsensitive(r, ["slug", "Slug"]);
+        const title = pickCaseInsensitive(r, ["title", "Title"]);
         if (!slug || !title) return null;
 
         const publishedRaw =
-          pick(r as any, ["Published", "published", "Publié", "publie"]) ?? "";
+          pickCaseInsensitive(r, ["Published", "published", "Publié", "publie"]) ?? "";
         const isPublished = truthy(publishedRaw);
-
         if (!showAll && !isPublished) return null;
 
-        const cover = pick(r as any, ["Cover", "Hero", "Hero_Image", "Image"]);
-        const subtitle = pick(r as any, ["Subtitle", "subtitle"]);
-        const excerpt = pick(r as any, ["Excerpt", "excerpt", "Intro", "intro"]);
-        const date = pick(r as any, ["Date", "date"]);
-        const tags = (pick(r as any, ["Tags", "tags"]) || "")
+        const cover = pickCaseInsensitive(r, ["Cover", "Hero", "Hero_Image", "Image"]);
+        const subtitle = pickCaseInsensitive(r, ["Subtitle", "subtitle"]);
+        const excerpt =
+          pickCaseInsensitive(r, ["Excerpt", "excerpt", "Intro", "intro"]) ?? "";
+        const date = pickCaseInsensitive(r, ["Date", "date"]);
+        const tagsStr = pickCaseInsensitive(r, ["Tags", "tags"]) ?? "";
+        const tags = tagsStr
           .split(",")
           .map((t) => t.trim())
-          .filter(Boolean);
+          .filter((t) => t.length > 0);
 
-        const base = { slug, title, subtitle, excerpt, cover, date, tags };
-        return diag ? { ...base, publishedRaw, isPublished } : base;
+        const base: ApiItem = { slug, title, subtitle, excerpt, cover, date, tags };
+        return withDiag ? { ...base, publishedRaw, isPublished } : base;
       })
-      .filter(Boolean);
+      .filter((x): x is ApiItem => x !== null);
 
     return new Response(JSON.stringify(list), {
       status: 200,
       headers: { "content-type": "application/json" },
     });
-  } catch (e) {
+  } catch {
     return new Response(
       JSON.stringify({ ok: false, error: "blog_fetch_failed" }),
       { status: 500, headers: { "content-type": "application/json" } }
