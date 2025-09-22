@@ -34,7 +34,7 @@ function getBaseUrl() {
   return "http://localhost:3000";
 }
 
-type ApiItem = Omit<Article, "bodyHtml" | "bodyMd"> & Partial<Pick<Article, "bodyHtml" | "bodyMd">>;
+type ApiItem = Partial<Article> & Pick<Article, "slug" | "title">;
 type ApiResult = { ok: boolean; data: ApiItem[]; status: number; error?: string };
 
 async function fetchArticlesFromApi(): Promise<ApiResult> {
@@ -60,19 +60,14 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
     return (
       <main className="prose mx-auto p-6">
         <h1>Blog indisponible</h1>
-        <p>Impossible de charger <code>/api/blog</code>.</p>
-        <ul>
-          <li><strong>Status:</strong> {status}</li>
-          <li><strong>Base URL:</strong> {getBaseUrl()}</li>
-          {error && <li><strong>Error:</strong> {error}</li>}
-        </ul>
+        <p>Impossible de charger <code>/api/blog</code>. ({status})</p>
+        {error && <p><small>{error}</small></p>}
       </main>
     );
   }
 
-  const article =
-    data.find(a => (a.slug ?? "").trim().toLowerCase() === s) ??
-    data.find(a => a.title && slugify(a.title) === s);
+  const article = data.find(a => (a.slug ?? "").trim().toLowerCase() === s)
+    ?? data.find(a => a.title && slugify(a.title) === s);
 
   if (!article) {
     return (
@@ -85,10 +80,9 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
     );
   }
 
-  const bodyHtml = (article as Article).bodyHtml;
-  const bodyMd = (article as Article).bodyMd;
+  const bodyHtml = article.bodyHtml;
+  const bodyMd = article.bodyMd;
 
-  // ✅ tape sur React.ReactNode[] (évite "Cannot find namespace 'JSX'")
   const mdToElements = (md: string): React.ReactNode[] => {
     const lines = md.split(/\r?\n/);
     const out: React.ReactNode[] = [];
@@ -102,31 +96,36 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
     return out;
   };
 
+  // petit helper pour éviter l’icône image cassée
+  const safeCover = typeof article.cover === "string" && /^https?:\/\//.test(article.cover) ? article.cover : undefined;
+
   return (
     <main className="prose mx-auto p-6">
       <h1>{article.title}</h1>
       {article.subtitle && <p><em>{article.subtitle}</em></p>}
-
-      {article.cover && (
-        <div className="relative w-full aspect-[16/9] mb-4">
-          <Image
-            src={article.cover}
-            alt={article.title}
-            fill
-            sizes="(max-width: 768px) 100vw, 768px"
-            priority
-          />
-        </div>
-      )}
-
       {article.date && <p><small>Publié le {article.date}</small></p>}
 
+      {/* 🔥 Afficher le corps AVANT l'image pour valider que le contenu sort bien */}
       {bodyHtml
         ? <article dangerouslySetInnerHTML={{ __html: bodyHtml }} />
         : bodyMd
           ? <article>{mdToElements(bodyMd)}</article>
           : (article.excerpt && <p>{article.excerpt}</p>)
       }
+
+      {/* Image en bas + unoptimized pour by-passer les soucis de loader */}
+      {safeCover && (
+        <div className="relative w-full aspect-[16/9] mt-6">
+          <Image
+            src={safeCover}
+            alt={article.title ?? "cover"}
+            fill
+            sizes="(max-width: 768px) 100vw, 768px"
+            priority
+            unoptimized        // <= clé pour stopper l’icône cassée tant qu’on débug
+          />
+        </div>
+      )}
     </main>
   );
 }
