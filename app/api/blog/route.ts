@@ -7,47 +7,68 @@ import { NextResponse } from "next/server";
  */
 const CSV_URL = process.env.SHEETS_BLOG_CSV || "";
 
-// ---- Helpers CSV ------------------------------------------------------------
-
-/** Découpe une ligne CSV en tenant compte des guillemets et des virgules échappées */
-function splitCsvLine(line: string): string[] {
-  const parts: string[] = [];
-  let cur = "";
+// ---------------------------------------------------------------------------
+// CSV PARSER ROBUSTE : gère guillemets, "" échappés, virgules et \n dans cellules
+// ---------------------------------------------------------------------------
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
   let inQuotes = false;
 
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      // Double guillemet = guillemet échappé
-      if (inQuotes && line[i + 1] === '"') {
-        cur += '"';
-        i++;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+
+    if (inQuotes) {
+      if (ch === '"') {
+        // "" => guillemet littéral
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
       } else {
-        inQuotes = !inQuotes;
+        field += ch;
       }
-    } else if (ch === "," && !inQuotes) {
-      parts.push(cur);
-      cur = "";
     } else {
-      cur += ch;
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ",") {
+        row.push(field.trim());
+        field = "";
+      } else if (ch === "\r") {
+        // ignore CR (géré avec LF)
+      } else if (ch === "\n") {
+        row.push(field.trim());
+        rows.push(row);
+        row = [];
+        field = "";
+      } else {
+        field += ch;
+      }
     }
   }
-  parts.push(cur);
-  return parts.map((s) => s.trim());
+
+  // dernier champ / dernière ligne
+  row.push(field.trim());
+  // si la dernière ligne n'est pas vide (au moins un champ non vide), on l'ajoute
+  if (row.some((c) => c !== "")) {
+    rows.push(row);
+  }
+
+  return rows;
 }
 
-/** Normalise les entêtes : minuscules + underscores */
 function normalizeHeader(h: string): string {
   return h.toLowerCase().replace(/\s+/g, "_");
 }
 
-/** Détermine si une chaîne représente le booléen vrai */
 function strTrue(v: string | undefined): boolean {
   const s = (v || "").trim().toLowerCase();
   return s === "1" || s === "true" || s === "oui" || s === "yes";
 }
 
-/** Slugify simple (accents, ponctuation, espaces) */
 function slugify(s: string): string {
   return s
     .toLowerCase()
@@ -56,8 +77,6 @@ function slugify(s: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
-
-// ---- Types -----------------------------------------------------------------
 
 type ItemRaw = {
   slug: string;
@@ -74,13 +93,9 @@ type ItemRaw = {
 
 type ItemPublic = Omit<ItemRaw, "published">;
 
-// ---- Route options ----------------------------------------------------------
-
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
-
-// ---- GET handler ------------------------------------------------------------
 
 export async function GET(req: Request) {
   try {
@@ -104,38 +119,35 @@ export async function GET(req: Request) {
     }
 
     const text = await res.text();
-    const lines = text
-      .replace(/\r\n/g, "\n")
-      .split("\n")
-      .filter((l) => l.trim().length > 0);
-
-    if (lines.length < 2) {
+    const table = parseCsv(text);
+    if (table.length < 2) {
       // Pas de données
       return NextResponse.json([] satisfies ItemPublic[]);
     }
 
-    const headerKeys = splitCsvLine(lines[0]).map(normalizeHeader);
+    const headerKeys = table[0].map(normalizeHeader);
 
-    const items: ItemRaw[] = lines.slice(1).map((line) => {
-      const cols = splitCsvLine(line);
+    const items: ItemRaw[] = table.slice(1).map((colsArr) => {
       const row: Record<string, string> = {};
-      headerKeys.forEach((h, i) => (row[h] = cols[i] ?? ""));
+      headerKeys.forEach((h, i) => (row[h] = colsArr[i] ?? ""));
 
-      // Champs usuels
       const title = row.title || row.titre || "";
       const subtitle = row.subtitle || row.sous_titre || "";
       const excerpt = row.excerpt || row.resume || row.chapo || "";
       const cover = row.cover || row.image || row.hero || "";
       const date = row.date || "";
-      const tags = (row.tags || "")
-        .split("|")
+
+      // tags séparés par | ou ,
+      const tagsRaw = row.tags || "";
+      const tags = tagsRaw
+        .split(/[|,]/)
         .map((s) => s.trim())
         .filter(Boolean);
 
       // Slug explicite ou dérivé du titre
       const slug = (row.slug || slugify(title)).trim();
 
-      // Corps : plusieurs conventions possibles
+      // Corps : conventions fréquentes
       const bodyHtml =
         row.bodyhtml ||
         row.html ||
@@ -184,7 +196,6 @@ export async function GET(req: Request) {
       });
     }
 
-    // Supprime le champ "published" à l'export public
     const sanitized: ItemPublic[] = filtered.map((it) => {
       const { published: _p, ...rest } = it;
       return rest;
