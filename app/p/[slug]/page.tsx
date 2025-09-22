@@ -6,6 +6,8 @@ import { Bodoni_Moda, Nunito_Sans } from "next/font/google";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
+
+// Canonical
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   return { alternates: { canonical: `/p/${slug}` } };
@@ -51,6 +53,13 @@ function priceToText(value?: number | string) {
   if (value == null) return undefined;
   if (typeof value === "string") return value;
   try { return `${value.toFixed(2)} €`; } catch { return `${value} €`; }
+}
+function priceToNumber(value?: number | string): number | undefined {
+  if (value == null) return undefined;
+  if (typeof value === "number") return value;
+  const s = value.replace(/[^\d.,]/g, "").replace(",", ".");
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : undefined;
 }
 function slugify(s: string) {
   return s.toLowerCase()
@@ -136,7 +145,7 @@ function RelatedCard({ o }: { o: Offer }) {
 export default async function ProductPage({
   params,
 }: {
-  // NOTE: ton projet tape params comme Promise — on respecte pour éviter l’erreur précédente
+  // NOTE: ton projet tape params comme Promise — on respecte
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
@@ -171,12 +180,13 @@ export default async function ProductPage({
   const brand = content.brand || offer.brand;
   const rating = content.rating;
   const price = priceToText(offer.price);
+  const priceNum = priceToNumber(offer.price);
 
   const intro =
     content.excerpt ??
     (typeof content.bodyMd === "string" ? content.bodyMd.split(/\n{2,}/)[0] : undefined);
 
-  // Produits liés (fallback simple : autres offres ≠ title courant)
+  // Produits liés (fallback simple)
   const related = offers
     .filter((o) => (o.title || "").toLowerCase() !== (title || "").toLowerCase())
     .slice(0, 2);
@@ -192,8 +202,40 @@ export default async function ProductPage({
     backgroundColor: "var(--bgMain)",
   };
 
+  // ---------- JSON-LD Product / Offer ----------
+  const base = getBaseUrl();
+  const jsonLd: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: title,
+    image: heroImg,
+    description: intro || content.excerpt,
+    brand: brand ? { "@type": "Brand", name: brand } : undefined,
+    aggregateRating:
+      typeof rating === "number"
+        ? { "@type": "AggregateRating", ratingValue: rating, reviewCount: 1 }
+        : undefined,
+    offers: offer?.affiliateUrl
+      ? {
+          "@type": "Offer",
+          url: offer.affiliateUrl,
+          priceCurrency: "EUR",
+          price: priceNum,
+          availability: "https://schema.org/InStock",
+        }
+      : undefined,
+    mainEntityOfPage: `${base}/p/${content.slug}`,
+  };
+
   return (
     <div className="min-h-screen w-full" style={rootStyle}>
+      {/* JSON-LD */}
+      <script
+        type="application/ld+json"
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+
       <div className="mx-auto max-w-6xl px-4 py-8">
         {/* ====== TOP GRID ====== */}
         <div className="grid gap-8 md:grid-cols-2">
