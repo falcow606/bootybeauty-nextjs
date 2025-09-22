@@ -20,6 +20,8 @@ type FeaturedProduct = {
   slug?: string;
 };
 
+type ContentSummary = { slug: string; title: string; brand?: string };
+
 function slugify(input: string): string {
   const s = input
     .normalize("NFD")
@@ -28,6 +30,13 @@ function slugify(input: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return s || "produit";
+}
+function normalize(input?: string) {
+  return (input || "")
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 function truthy(v: unknown): boolean {
   if (typeof v === "boolean") return v;
@@ -86,6 +95,14 @@ function mapOffer(row: UnknownRecord): FeaturedProduct {
   };
 }
 
+function getBaseUrl() {
+  const site = process.env.NEXT_PUBLIC_SITE_URL;
+  if (site) return site.replace(/\/$/, "");
+  const host = process.env.VERCEL_URL || process.env.NEXT_PUBLIC_VERCEL_URL;
+  if (host) return `https://${host.replace(/\/$/, "")}`;
+  return "http://localhost:3000";
+}
+
 async function getFeaturedOffers(): Promise<FeaturedProduct[]> {
   // On lit la source N8N (ou OFFERS) puis on filtre Featured
   const url = process.env.N8N_FEATURED_URL || process.env.N8N_OFFERS_URL;
@@ -126,6 +143,46 @@ async function getFeaturedOffers(): Promise<FeaturedProduct[]> {
   return filtered.slice(0, 3).map(mapOffer);
 }
 
+async function getContentSummary(): Promise<ContentSummary[]> {
+  const res = await fetch(`${getBaseUrl()}/api/content`, { cache: "no-store" });
+  if (!res.ok) return [];
+  const list = (await res.json()) as Array<{ slug: string; title: string; brand?: string }>;
+  // Nettoyage défensif
+  return Array.isArray(list)
+    ? list
+        .filter((x) => typeof x?.slug === "string" && typeof x?.title === "string")
+        .map((x) => ({ slug: x.slug, title: x.title, brand: x.brand }))
+    : [];
+}
+
+function findCanonicalSlug(p: FeaturedProduct, content: ContentSummary[]): string | undefined {
+  // 1) slug exact si fourni par la source et existant côté /api/content
+  if (p.slug) {
+    const exact = content.find((c) => c.slug.toLowerCase() === p.slug!.toLowerCase());
+    if (exact) return exact.slug;
+  }
+  // 2) match slugifié par titre
+  if (p.title) {
+    const s = slugify(p.title);
+    const byTitle = content.find((c) => slugify(c.title) === s);
+    if (byTitle) return byTitle.slug;
+  }
+  // 3) score tolérant (titre + marque)
+  const nTitle = normalize(p.title);
+  const nBrand = normalize(p.brand);
+  let best: { slug: string; score: number } | undefined;
+  for (const c of content) {
+    let score = 0;
+    const ct = normalize(c.title);
+    const cb = normalize(c.brand);
+    if (nTitle && ct.includes(nTitle)) score += 3;
+    if (nBrand && cb && cb.includes(nBrand)) score += 2;
+    if (nBrand && ct.includes(nBrand)) score += 1;
+    if (score > 0 && (!best || score > best.score)) best = { slug: c.slug, score };
+  }
+  return best?.slug;
+}
+
 type CSSVars = React.CSSProperties & {
   ["--accent"]: string;
   ["--secondary"]: string;
@@ -135,7 +192,7 @@ type CSSVars = React.CSSProperties & {
 };
 
 export default async function HomePage() {
-  const featured = await getFeaturedOffers();
+  const [featured, content] = await Promise.all([getFeaturedOffers(), getContentSummary()]);
 
   const rootStyle: CSSVars = {
     "--accent": "#C4A092",
@@ -192,7 +249,9 @@ export default async function HomePage() {
                 { title: "Huile Corps Sublimatrice Body Sunshine", price: "", imageUrl: "/images/huile-corps-sunshine.jpg", brand: "", affiliateUrl: "" },
               ]
           ).map((p, i) => {
-            const detailsSlug = p.slug || (p.title ? slugify(p.title) : "");
+            // >>>>>>>>>>>>> NOUVELLE LOGIQUE DE LIEN (slug canonique depuis /api/content) <<<<<<<<<<<<<
+            const canonical = findCanonicalSlug(p, content);
+            const detailsSlug = canonical || p.slug || (p.title ? slugify(p.title) : "");
             const detailsHref = detailsSlug ? `/p/${detailsSlug}` : "/offers";
             const hasAff = typeof p.affiliateUrl === "string" && p.affiliateUrl.length > 0;
 
