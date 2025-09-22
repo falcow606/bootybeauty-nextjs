@@ -1,15 +1,10 @@
 // app/api/blog/route.ts
 import { NextResponse } from "next/server";
 
-/**
- * URL du CSV publié depuis Google Sheets (onglet Blog)
- * -> Vercel Project Settings > Environment Variables > SHEETS_BLOG_CSV
- */
+/** Vercel > Env: SHEETS_BLOG_CSV (URL "Publier sur le web" de l’onglet Blog) */
 const CSV_URL = process.env.SHEETS_BLOG_CSV || "";
 
-// ---------------------------------------------------------------------------
-// CSV PARSER ROBUSTE : gère guillemets, "" échappés, virgules et \n dans cellules
-// ---------------------------------------------------------------------------
+/** Parser CSV robuste (guillemets, "" échappés, virgules et sauts de ligne dans cellules) */
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
@@ -18,10 +13,8 @@ function parseCsv(text: string): string[][] {
 
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
-
     if (inQuotes) {
       if (ch === '"') {
-        // "" => guillemet littéral
         if (text[i + 1] === '"') {
           field += '"';
           i++;
@@ -38,7 +31,7 @@ function parseCsv(text: string): string[][] {
         row.push(field.trim());
         field = "";
       } else if (ch === "\r") {
-        // ignore CR (géré avec LF)
+        // ignore CR
       } else if (ch === "\n") {
         row.push(field.trim());
         rows.push(row);
@@ -49,31 +42,23 @@ function parseCsv(text: string): string[][] {
       }
     }
   }
-
   // dernier champ / dernière ligne
   row.push(field.trim());
-  // si la dernière ligne n'est pas vide (au moins un champ non vide), on l'ajoute
-  if (row.some((c) => c !== "")) {
-    rows.push(row);
-  }
-
+  if (row.some((c) => c !== "")) rows.push(row);
   return rows;
 }
 
 function normalizeHeader(h: string): string {
   return h.toLowerCase().replace(/\s+/g, "_");
 }
-
 function strTrue(v: string | undefined): boolean {
   const s = (v || "").trim().toLowerCase();
   return s === "1" || s === "true" || s === "oui" || s === "yes";
 }
-
 function slugify(s: string): string {
   return s
     .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
@@ -85,7 +70,7 @@ type ItemRaw = {
   excerpt?: string;
   cover?: string;
   date?: string;
-  tags: string[];
+  tags: string[];         // toujours un tableau (évent. vide)
   published: boolean;
   bodyHtml?: string;
   bodyMd?: string;
@@ -100,10 +85,7 @@ export const runtime = "nodejs";
 export async function GET(req: Request) {
   try {
     if (!CSV_URL) {
-      return NextResponse.json(
-        { ok: false, error: "SHEETS_BLOG_CSV missing" },
-        { status: 500 }
-      );
+      return NextResponse.json({ ok: false, error: "SHEETS_BLOG_CSV missing" }, { status: 500 });
     }
 
     const { searchParams } = new URL(req.url);
@@ -112,24 +94,22 @@ export async function GET(req: Request) {
 
     const res = await fetch(CSV_URL, { cache: "no-store" });
     if (!res.ok) {
-      return NextResponse.json(
-        { ok: false, error: `CSV HTTP ${res.status}` },
-        { status: 502 }
-      );
+      return NextResponse.json({ ok: false, error: `CSV HTTP ${res.status}` }, { status: 502 });
     }
 
     const text = await res.text();
     const table = parseCsv(text);
     if (table.length < 2) {
-      // Pas de données
       return NextResponse.json([] satisfies ItemPublic[]);
     }
 
-    const headerKeys = table[0].map(normalizeHeader);
+    const headers = table[0].map(normalizeHeader);
 
     const items: ItemRaw[] = table.slice(1).map((colsArr) => {
       const row: Record<string, string> = {};
-      headerKeys.forEach((h, i) => (row[h] = colsArr[i] ?? ""));
+      headers.forEach((h, i) => {
+        row[h] = colsArr[i] ?? "";
+      });
 
       const title = row.title || row.titre || "";
       const subtitle = row.subtitle || row.sous_titre || "";
@@ -137,17 +117,15 @@ export async function GET(req: Request) {
       const cover = row.cover || row.image || row.hero || "";
       const date = row.date || "";
 
-      // tags séparés par | ou ,
+      // tags : accepte séparateurs | ou ,
       const tagsRaw = row.tags || "";
       const tags = tagsRaw
         .split(/[|,]/)
         .map((s) => s.trim())
         .filter(Boolean);
 
-      // Slug explicite ou dérivé du titre
       const slug = (row.slug || slugify(title)).trim();
 
-      // Corps : conventions fréquentes
       const bodyHtml =
         row.bodyhtml ||
         row.html ||
@@ -155,6 +133,7 @@ export async function GET(req: Request) {
         row.body_html ||
         row.articlehtml ||
         "";
+
       const bodyMd =
         row.bodymd ||
         row.body ||
@@ -163,7 +142,6 @@ export async function GET(req: Request) {
         row.content ||
         "";
 
-      // Publication
       const published =
         strTrue(row.published) ||
         strTrue(row.publish) ||
@@ -176,7 +154,7 @@ export async function GET(req: Request) {
         excerpt,
         cover,
         date,
-        tags,
+        tags,           // toujours présent (potentiellement vide)
         published,
       };
 
@@ -192,25 +170,22 @@ export async function GET(req: Request) {
         ok: true,
         count: filtered.length,
         sample: filtered.slice(0, 3),
-        headers: headerKeys,
+        headers,
       });
     }
 
-    // Sortie publique : recopier explicitement sans "published" (évite unused vars & any)
-    const sanitized: ItemPublic[] = filtered.map((it) => {
-      const out: ItemPublic = {
-        slug: it.slug,
-        title: it.title,
-      };
-      if (it.subtitle) out.subtitle = it.subtitle;
-      if (it.excerpt) out.excerpt = it.excerpt;
-      if (it.cover) out.cover = it.cover;
-      if (it.date) out.date = it.date;
-      if (it.tags && it.tags.length) out.tags = it.tags;
-      if (it.bodyHtml) out.bodyHtml = it.bodyHtml;
-      if (it.bodyMd) out.bodyMd = it.bodyMd;
-      return out;
-    });
+    // Sortie publique : toujours fournir "tags" (tableau), pas de champ "published"
+    const sanitized: ItemPublic[] = filtered.map((it) => ({
+      slug: it.slug,
+      title: it.title,
+      subtitle: it.subtitle,
+      excerpt: it.excerpt,
+      cover: it.cover,
+      date: it.date,
+      tags: Array.isArray(it.tags) ? it.tags : [], // <= clé du fix
+      bodyHtml: it.bodyHtml,
+      bodyMd: it.bodyMd,
+    }));
 
     return NextResponse.json(sanitized);
   } catch (e: unknown) {
