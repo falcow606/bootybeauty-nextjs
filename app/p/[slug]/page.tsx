@@ -1,53 +1,41 @@
 // app/p/[slug]/page.tsx
 import Image from "next/image";
+import Link from "next/link";
+import { Bodoni_Moda, Nunito_Sans } from "next/font/google";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
+
+const bodoni = Bodoni_Moda({ subsets: ["latin"], style: ["normal"], weight: ["400","600","700"] });
+const nunito = Nunito_Sans({ subsets: ["latin"], weight: ["300","400","600","700"] });
 
 type ContentItem = {
   slug: string;
   title: string;
   brand?: string;
   hero?: string;
+  subtitle?: string;
+  excerpt?: string;
   pros?: string[];
   cons?: string[];
   howto?: string;
   bodyHtml?: string;
   bodyMd?: string;
   rating?: number;
-  subtitle?: string; // sous-titre éventuel
-  excerpt?: string;  // intro courte éventuelle
 };
 
 type Offer = {
   productId?: string;
-  merchant?: string;
-  price?: number | string;
-  availability?: string;
-  affiliateUrl?: string;
-  commissionPct?: number | string;
-  httpStatus?: number;
-  lastChecked?: string;
-  imageUrl?: string;
   title?: string;
   brand?: string;
+  merchant?: string;
+  imageUrl?: string;
+  price?: number | string;
+  affiliateUrl?: string;
+  slug?: string;
 };
 
-function slugify(s: string) {
-  return s
-    .toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-function normalize(s?: string) {
-  return (s || "")
-    .toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
 function getBaseUrl() {
   const site = process.env.NEXT_PUBLIC_SITE_URL;
   if (site) return site.replace(/\/$/, "");
@@ -55,11 +43,16 @@ function getBaseUrl() {
   if (host) return `https://${host.replace(/\/$/, "")}`;
   return "http://localhost:3000";
 }
-function getOffersUrl() {
-  return process.env.N8N_OFFERS_API || process.env.N8N_OFFERS_URL || "";
+function priceToText(value?: number | string) {
+  if (value == null) return undefined;
+  if (typeof value === "string") return value;
+  try { return `${value.toFixed(2)} €`; } catch { return `${value} €`; }
 }
-function getOffersKey() {
-  return process.env.N8N_OFFERS_KEY || "";
+function slugify(s: string) {
+  return s.toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 async function fetchContent(): Promise<ContentItem[]> {
@@ -68,64 +61,78 @@ async function fetchContent(): Promise<ContentItem[]> {
   return res.json();
 }
 async function fetchOffers(): Promise<Offer[]> {
-  const url = getOffersUrl();
-  if (!url) return [];
-  const headers: Record<string, string> = {};
-  const key = getOffersKey();
-  if (key) headers["x-api-key"] = key;
-
-  const res = await fetch(url, { headers, cache: "no-store" });
+  const res = await fetch(`${getBaseUrl()}/api/offers`, { cache: "no-store" });
   if (!res.ok) return [];
   return res.json();
 }
 
-function pickBestOffer(content: ContentItem, offers: Offer[]): Offer | undefined {
-  const nTitle = normalize(content.title);
-  const nBrand = normalize(content.brand);
-  let best: { offer: Offer; score: number } | undefined;
-
-  for (const off of offers) {
-    const oTitle = normalize(off.title);
-    const oBrand = normalize(off.brand);
-    let score = 0;
-    if (nTitle && oTitle.includes(nTitle)) score += 3;
-    if (nBrand && oBrand && oBrand.includes(nBrand)) score += 2;
-    if (nBrand && oTitle.includes(nBrand)) score += 1;
-    if (score > 0 && (!best || score > best.score)) best = { offer: off, score };
-  }
-  return best?.offer || offers[0];
-}
-
-function renderPrice(value?: number | string) {
-  if (value == null) return undefined;
-  if (typeof value === "string") return value;
-  try {
-    return `${value.toFixed(2)} €`;
-  } catch {
-    return `${value} €`;
-  }
-}
-
-function Stars({ rating }: { rating?: number }) {
-  if (!rating || rating <= 0) return null;
-  const r = Math.max(0, Math.min(5, rating));
-  const full = Math.floor(r);
-  const half = r - full >= 0.5 ? 1 : 0;
-  const empty = 5 - full - half;
+function ApricotRating({ value }: { value?: number }) {
+  if (!value || value <= 0) return null;
+  const v = Math.max(0, Math.min(5, value));
+  const full = Math.floor(v);
+  const empties = 5 - full;
   return (
-    <span className="text-yellow-500" aria-label={`Note ${r}/5`}>
-      {"★".repeat(full)}
-      {half ? "☆" : ""}
-      {"☆".repeat(empty)}
-      <span className="ml-1 text-xs text-black/60 align-middle">({r.toFixed(1)})</span>
+    <span aria-label={`Note ${v}/5`} className="text-lg leading-none">
+      {"🍑".repeat(full)}
+      <span className="opacity-30">{"🍑".repeat(empties)}</span>
     </span>
   );
 }
 
-// NOTE: votre projet tape params comme Promise — on respecte
+function RelatedCard({ o }: { o: Offer }) {
+  const href = o.slug ? `/p/${o.slug}` : (o.title ? `/p/${slugify(o.title)}` : "/offers");
+  const hasAff = !!o.affiliateUrl;
+  return (
+    <article className="rounded-2xl bg-white p-4 shadow-sm">
+      <div className="rounded-xl bg-white p-2">
+        <Image
+          src={o.imageUrl || "/images/product-placeholder.jpg"}
+          alt={o.title || "Produit lié"}
+          width={800}
+          height={800}
+          className="h-auto w-full rounded-lg object-cover"
+          unoptimized
+        />
+      </div>
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <div>
+          <h4 className={`${bodoni.className} text-base`} style={{ color: "#252525" }}>
+            {o.title || "Produit"}
+          </h4>
+          <p className={`${nunito.className} text-sm opacity-80`} style={{ color: "#333" }}>
+            {o.brand || o.merchant || ""}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link
+            href={href}
+            className={`${nunito.className} rounded-2xl border px-4 py-2 text-sm transition`}
+            style={{ borderColor: "#C4A092", color: "#C4A092", backgroundColor: "transparent" }}
+            prefetch
+          >
+            Détails
+          </Link>
+          {hasAff ? (
+            <Link
+              href={o.affiliateUrl as string}
+              className="rounded-2xl px-4 py-2 text-sm text-white transition hover:opacity-90 hover:shadow-md"
+              style={{ backgroundColor: "#C4A092" }}
+              rel="nofollow sponsored noopener"
+              target="_blank"
+            >
+              Voir l’offre
+            </Link>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
 export default async function ProductPage({
   params,
 }: {
+  // NOTE: ton projet tape params comme Promise — on respecte pour éviter l’erreur précédente
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
@@ -146,169 +153,193 @@ export default async function ProductPage({
     );
   }
 
-  const offer = pickBestOffer(content, offers) || {};
-  const price = renderPrice(offer.price);
-  const safeHero =
+  const offer = offers.find((o) => {
+    const t = (o.title || "").toLowerCase();
+    const b = (o.brand || "").toLowerCase();
+    return t.includes((content.title || "").toLowerCase()) || (!!content.brand && b.includes(content.brand.toLowerCase()));
+  }) || offers[0] || {};
+
+  const heroImg =
     (content.hero && /^https?:\/\//.test(content.hero) ? content.hero : undefined) ||
     (offer.imageUrl && /^https?:\/\//.test(offer.imageUrl) ? offer.imageUrl : undefined);
 
   const title = content.title || offer.title || "Produit";
   const brand = content.brand || offer.brand;
-  const availability = offer.availability;
-  const merchant = offer.merchant;
-  const lastChecked = offer.lastChecked;
-  const affiliateUrl = offer.affiliateUrl;
+  const rating = content.rating;
+  const price = priceToText(offer.price);
 
-  // Intro courte : priorité à excerpt, sinon 1er paragraphe du bodyMd
   const intro =
     content.excerpt ??
-    (typeof content.bodyMd === "string"
-      ? content.bodyMd.split(/\n{2,}/)[0]
-      : undefined);
+    (typeof content.bodyMd === "string" ? content.bodyMd.split(/\n{2,}/)[0] : undefined);
+
+  // Produits liés (fallback simple : autres offres ≠ title courant)
+  const related = offers
+    .filter((o) => (o.title || "").toLowerCase() !== (title || "").toLowerCase())
+    .slice(0, 2);
+
+  // Palette validée
+  const rootStyle: React.CSSProperties & {
+    ["--accent"]: string; ["--bgMain"]: string; ["--bgLight"]: string; ["--text"]: string;
+  } = {
+    "--accent": "#C4A092",
+    "--bgMain": "#FAF0E6",
+    "--bgLight": "#EBC8B2",
+    "--text": "#333333",
+    backgroundColor: "var(--bgMain)",
+  };
 
   return (
-    <article className="mx-auto max-w-5xl px-4 py-10">
-      {/* === TOP AREA (image gauche / infos droite) === */}
-      <div className="grid gap-8 md:grid-cols-2 items-start">
-        {/* IMAGE LEFT */}
-        <div className="relative w-full aspect-square rounded-2xl overflow-hidden shadow-sm bg-white">
-          {safeHero ? (
-            <Image
-              src={safeHero}
-              alt={title}
-              fill
-              sizes="(max-width: 768px) 100vw, 640px"
-              className="object-cover"
-              unoptimized
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-sm opacity-50">
-              (Pas d’image)
-            </div>
-          )}
-        </div>
-
-        {/* RIGHT INFO */}
-        <div className="flex flex-col">
-          <h1 className="text-3xl md:text-4xl font-semibold leading-tight tracking-tight">
-            {title}
-          </h1>
-          {content.subtitle && (
-            <p className="mt-1 text-lg opacity-80 italic">{content.subtitle}</p>
-          )}
-
-          {/* Price / Brand / Rating */}
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            {price && (
-              <div className="rounded-xl border px-3 py-2 text-lg font-semibold bg-white/70 shadow-sm">
-                {price}
-              </div>
-            )}
-            {brand && (
-              <span className="text-sm rounded-full border px-2 py-0.5">
-                {brand}
-              </span>
-            )}
-            {typeof content.rating === "number" && <Stars rating={content.rating} />}
-          </div>
-
-          {/* Intro */}
-          {intro && (
-            <p className="mt-4 text-[15px] leading-relaxed opacity-90 whitespace-pre-wrap">
-              {intro}
-            </p>
-          )}
-
-          {/* Pros (en haut, à droite) */}
-          {content.pros && content.pros.length > 0 && (
-            <div className="mt-4 rounded-2xl border p-4 bg-white/60">
-              <h2 className="text-base font-semibold">Pourquoi on aime</h2>
-              <ul className="mt-2 list-disc pl-5 space-y-1">
-                {content.pros.map((p, i) => (
-                  <li key={`pro-${i}`}>{p}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* CTA + méta offre */}
-          {(affiliateUrl || availability || merchant || lastChecked) && (
-            <div className="mt-4 flex flex-col gap-3">
-              {affiliateUrl && (
-                <div>
-                  <a
-                    href={affiliateUrl}
-                    target="_blank"
-                    rel="nofollow sponsored noopener"
-                    className="inline-flex items-center justify-center rounded-xl bg-black text-white px-5 py-3 text-sm font-medium shadow-sm hover:opacity-90"
-                  >
-                    Voir l’offre
-                  </a>
-                  <p className="mt-1 text-xs opacity-60">
-                    *Lien affilié : peut nous rapporter une petite commission
-                    sans coût supplémentaire pour toi.
-                  </p>
+    <div className="min-h-screen w-full" style={rootStyle}>
+      <div className="mx-auto max-w-6xl px-4 py-8">
+        {/* ====== TOP GRID ====== */}
+        <div className="grid gap-8 md:grid-cols-2">
+          {/* IMAGE GAUCHE — cadre blanc épais */}
+          <div className="rounded-[28px] bg-white p-4 shadow-sm">
+            <div className="overflow-hidden rounded-[20px]">
+              {heroImg ? (
+                <Image
+                  src={heroImg}
+                  alt={title || "Produit"}
+                  width={1200}
+                  height={900}
+                  unoptimized
+                  className="w-full object-contain md:aspect-[4/3]"
+                  priority
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-sm opacity-50">
+                  (Pas d’image)
                 </div>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {availability && (
-                  <div className="rounded-xl border p-3 bg-white/60">
-                    <div className="text-xs opacity-60 mb-1">Disponibilité</div>
-                    <div className="text-sm">{availability}</div>
-                  </div>
-                )}
-                {merchant && (
-                  <div className="rounded-xl border p-3 bg-white/60">
-                    <div className="text-xs opacity-60 mb-1">Marchand</div>
-                    <div className="text-sm">{merchant}</div>
-                  </div>
-                )}
-                {lastChecked && (
-                  <div className="rounded-xl border p-3 bg-white/60">
-                    <div className="text-xs opacity-60 mb-1">Vérifié le</div>
-                    <div className="text-sm">
-                      {new Date(lastChecked).toLocaleString("fr-FR")}
-                    </div>
-                  </div>
-                )}
+            </div>
+          </div>
+
+          {/* COLONNE DROITE — tout le bloc tient visuellement dans la hauteur image */}
+          <div className="flex flex-col">
+            {/* Titre & Sous-titre */}
+            <h1 className={`${bodoni.className} text-3xl md:text-4xl`} style={{ color: "var(--text)" }}>
+              {title}{brand ? <span className="opacity-60"> — {brand}</span> : null}
+            </h1>
+            {content.subtitle ? (
+              <p className={`${nunito.className} mt-2 opacity-80`} style={{ color: "var(--text)" }}>
+                {content.subtitle}
+              </p>
+            ) : null}
+
+            {/* Ligne méta : 🍑 note + marque + prix badge */}
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              {typeof rating === "number" && (
+                <div className="flex items-center gap-2">
+                  <ApricotRating value={rating} />
+                  <span className={`${nunito.className} text-sm opacity-80`}>{rating}/5</span>
+                </div>
+              )}
+              {brand ? (
+                <span className={`${nunito.className} rounded-full border px-2 py-0.5 text-sm opacity-80`} style={{ borderColor: "var(--bgLight)", color: "var(--text)" }}>
+                  {brand}
+                </span>
+              ) : null}
+              {price ? (
+                <span className={`${bodoni.className} rounded-xl border px-3 py-1 text-sm`} style={{ borderColor: "var(--accent)", color: "var(--text)" }}>
+                  {price}
+                </span>
+              ) : null}
+            </div>
+
+            {/* CTAs */}
+            <div className="mt-5 flex flex-wrap gap-3">
+              {offer.affiliateUrl ? (
+                <Link
+                  href={offer.affiliateUrl}
+                  target="_blank"
+                  rel="nofollow sponsored noopener"
+                  className="rounded-2xl px-5 py-3 text-sm text-white transition hover:opacity-90 hover:shadow-md"
+                  style={{ backgroundColor: "var(--accent)" }}
+                >
+                  Voir l’offre
+                </Link>
+              ) : null}
+              <Link
+                href="/offers"
+                className="rounded-2xl border px-5 py-3 text-sm transition hover:opacity-90"
+                style={{ borderColor: "var(--accent)", color: "var(--accent)", background: "transparent" }}
+              >
+                Voir toutes les offres
+              </Link>
+            </div>
+
+            {/* En bref */}
+            {intro ? (
+              <div className={`${nunito.className} prose prose-sm mt-6 max-w-none`}>
+                <p className="whitespace-pre-wrap" style={{ color: "var(--text)" }}>{intro}</p>
               </div>
+            ) : null}
+
+            {/* Pourquoi on aime */}
+            {content.pros && content.pros.length ? (
+              <div className="mt-6 rounded-2xl border p-4" style={{ borderColor: "var(--bgLight)" }}>
+                <h3 className={`${bodoni.className} text-xl`} style={{ color: "var(--accent)" }}>
+                  Pourquoi on aime
+                </h3>
+                <ul className={`${nunito.className} mt-2 list-disc pl-5`}>
+                  {content.pros.map((li, i) => (
+                    <li key={`pro-${i}`} className="opacity-90" style={{ color: "var(--text)" }}>
+                      {li}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {/* ====== SOUS LA GRILLE : À noter & Comment l’utiliser (2 colonnes) ====== */}
+        {(content.cons && content.cons.length) || content.howto ? (
+          <div className="mt-8 grid gap-6 md:grid-cols-2">
+            {content.cons && content.cons.length ? (
+              <section className="rounded-3xl bg-white/50 p-6">
+                <h3 className={`${bodoni.className} mb-2 text-lg`} style={{ color: "var(--text)" }}>
+                  À noter
+                </h3>
+                <ul className={`${nunito.className} list-disc pl-6`}>
+                  {content.cons.map((c, i) => (
+                    <li key={`con-${i}`} style={{ color: "var(--text)" }}>{c}</li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            {content.howto ? (
+              <section className="rounded-3xl bg-white/50 p-6">
+                <h3 className={`${bodoni.className} mb-2 text-lg`} style={{ color: "var(--text)" }}>
+                  Comment l’utiliser
+                </h3>
+                <p className={`${nunito.className}`} style={{ color: "var(--text)" }}>
+                  {content.howto}
+                </p>
+              </section>
+            ) : null}
+          </div>
+        ) : null}
+
+        {/* ====== PRODUITS LIÉS ====== */}
+        <div className="mt-10">
+          <h2 className={`${bodoni.className} text-2xl`} style={{ color: "var(--text)" }}>
+            Produits liés
+          </h2>
+          {related.length === 0 ? (
+            <p className={`${nunito.className} mt-2 opacity-70`} style={{ color: "var(--text)" }}>
+              Aucun autre produit pour le moment.
+            </p>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
+              {related.map((o, i) => (
+                <RelatedCard key={`${o.productId || o.slug || i}-${i}`} o={o} />
+              ))}
             </div>
           )}
         </div>
       </div>
-
-      {/* === UNDER THE FOLD (full width): CONS, HOW TO, BODY === */}
-      <div className="mt-10 space-y-8">
-        {content.cons && content.cons.length > 0 && (
-          <section className="rounded-2xl border p-5 bg-white/60">
-            <h2 className="text-xl font-semibold">Points d’attention</h2>
-            <ul className="mt-2 list-disc pl-5 space-y-1">
-              {content.cons.map((c, i) => (
-                <li key={`con-${i}`}>{c}</li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        {content.howto && (
-          <section className="rounded-2xl border p-5 bg-white/60">
-            <h2 className="text-xl font-semibold">Mode d’emploi</h2>
-            <p className="mt-2 whitespace-pre-wrap">{content.howto}</p>
-          </section>
-        )}
-
-        {(content.bodyHtml || content.bodyMd) && (
-          <section className="prose prose-neutral md:prose-lg max-w-none">
-            {content.bodyHtml ? (
-              <article dangerouslySetInnerHTML={{ __html: content.bodyHtml }} />
-            ) : (
-              <article className="whitespace-pre-wrap leading-relaxed">
-                {content.bodyMd}
-              </article>
-            )}
-          </section>
-        )}
-      </div>
-    </article>
+    </div>
   );
 }
