@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect width="256" height="256" rx="56" fill="#C4A092"></rect>
+  <!-- feuille -->
+  <path d="M160 68c18-14 36-18 48-14-10 8-18 17-22 27" fill="#4CAF50"></path>
+  <!-- pêche simplifiée -->
+  <path d="M128 88c28 0 52 22 52 48s-24 50-52 64c-28-14-52-38-52-64s24-48 52-48z" fill="#fff" opacity="0.95"></path>
+</svg>
