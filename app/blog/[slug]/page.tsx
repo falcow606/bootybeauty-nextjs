@@ -4,6 +4,9 @@ import Image from "next/image";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
+export async function generateMetadata({ params }: { params: { slug: string } }) {
+  return { alternates: { canonical: `/blog/${params.slug}` } };
+}
 
 type Article = {
   slug: string;

@@ -1,19 +1,13 @@
 // app/robots.ts
-import type { MetadataRoute } from 'next';
-
-const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL || 'https://bootybeauty-nextjs.vercel.app';
+import type { MetadataRoute } from "next";
 
 export default function robots(): MetadataRoute.Robots {
+  const base = (process.env.NEXT_PUBLIC_SITE_URL || `https://${process.env.VERCEL_URL || "www.bootyandcutie.com"}`).replace(/\/$/, "");
   return {
     rules: [
-      {
-        userAgent: '*',
-        allow: '/',
-        // optionnel : évite d’indexer des zones techniques
-        disallow: ['/api/', '/_next/', '/admin', '/private'],
-      },
+      { userAgent: "*", allow: ["/"], disallow: ["/api/", "/admin", "/draft", "/private"] },
     ],
-    sitemap: `${siteUrl}/sitemap.xml`,
+    sitemap: `${base}/sitemap.xml`,
+    host: base,
   };
 }

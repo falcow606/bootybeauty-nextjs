@@ -6,6 +6,10 @@ import { Bodoni_Moda, Nunito_Sans } from "next/font/google";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  return { alternates: { canonical: `/p/${slug}` } };
+}
 
 const bodoni = Bodoni_Moda({ subsets: ["latin"], style: ["normal"], weight: ["400","600","700"] });
 const nunito = Nunito_Sans({ subsets: ["latin"], weight: ["300","400","600","700"] });
