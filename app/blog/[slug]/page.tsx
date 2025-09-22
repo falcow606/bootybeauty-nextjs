@@ -1,5 +1,4 @@
 // app/blog/[slug]/page.tsx
-import React from "react";
 import Image from "next/image";
 
 export const dynamic = "force-dynamic";
@@ -80,21 +79,8 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
 
   const bodyHtml = article.bodyHtml;
   const bodyMd = article.bodyMd;
-
-  const mdToElements = (md: string): React.ReactNode[] => {
-    const lines = md.split(/\r?\n/);
-    const out: React.ReactNode[] = [];
-    lines.forEach((ln, i) => {
-      const l = ln.trim();
-      if (!l) return;
-      if (l.startsWith("### ")) out.push(<h3 key={`h3-${i}`}>{l.slice(4)}</h3>);
-      else if (l.startsWith("## ")) out.push(<h2 key={`h2-${i}`}>{l.slice(3)}</h2>);
-      else out.push(<p key={`p-${i}`}>{l}</p>);
-    });
-    return out;
-  };
-
-  const safeCover = typeof article.cover === "string" && /^https?:\/\//.test(article.cover) ? article.cover : undefined;
+  const safeCover =
+    typeof article.cover === "string" && /^https?:\/\//.test(article.cover) ? article.cover : undefined;
 
   return (
     <article className="mx-auto max-w-3xl px-4 py-10">
@@ -130,12 +116,16 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
 
       {/* CONTENT */}
       <div className="prose prose-neutral md:prose-lg max-w-none mt-6">
-        {bodyHtml
-          ? <article dangerouslySetInnerHTML={{ __html: bodyHtml }} />
-          : bodyMd
-            ? <article>{mdToElements(bodyMd)}</article>
-            : (article.excerpt && <p>{article.excerpt}</p>)
-        }
+        {bodyHtml ? (
+          <article dangerouslySetInnerHTML={{ __html: bodyHtml }} />
+        ) : bodyMd ? (
+          // ✅ préserve les retours à la ligne de la Sheet
+          <article className="whitespace-pre-wrap leading-relaxed">
+            {bodyMd}
+          </article>
+        ) : (
+          article.excerpt && <p>{article.excerpt}</p>
+        )}
       </div>
     </article>
   );
