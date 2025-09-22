@@ -33,43 +33,53 @@ async function fetchList(): Promise<Item[]> {
 export default async function BlogIndex() {
   const items = await fetchList();
 
-  if (!items.length) {
-    return (
-      <main className="prose mx-auto p-6">
-        <h1>Le Blog</h1>
-        <p>Aucun article pour l’instant.</p>
-      </main>
-    );
-  }
-
   return (
-    <main className="prose mx-auto p-6">
-      <h1>Le Blog</h1>
-      <div className="grid gap-6 md:grid-cols-2">
-        {items.map((it) => {
-          const safeCover = typeof it.cover === "string" && /^https?:\/\//.test(it.cover) ? it.cover : undefined;
-          return (
-            <article key={it.slug} className="border rounded-xl p-4">
-              {safeCover && (
-                <div className="relative w-full aspect-[16/9] mb-3">
-                  <Image
-                    src={safeCover}
-                    alt={it.title}
-                    fill
-                    sizes="(max-width: 768px) 100vw, 400px"
-                    unoptimized
-                  />
+    <main className="mx-auto max-w-6xl px-4 py-10">
+      <h1 className="text-3xl md:text-4xl font-semibold tracking-tight mb-8">Le Blog</h1>
+
+      {!items.length ? (
+        <p className="opacity-70">Aucun article pour l’instant.</p>
+      ) : (
+        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((it) => {
+            const safeCover = typeof it.cover === "string" && /^https?:\/\//.test(it.cover) ? it.cover : undefined;
+            return (
+              <article
+                key={it.slug}
+                className="group overflow-hidden rounded-2xl border shadow-sm bg-white/50 backdrop-blur transition hover:shadow-md"
+              >
+                {safeCover && (
+                  <div className="relative w-full aspect-[16/9]">
+                    <Image
+                      src={safeCover}
+                      alt={it.title}
+                      fill
+                      sizes="(max-width: 768px) 100vw, 400px"
+                      className="object-cover"
+                      unoptimized
+                    />
+                  </div>
+                )}
+
+                <div className="p-4">
+                  <h2 className="text-lg font-semibold leading-tight">
+                    <Link href={`/blog/${it.slug}`} className="hover:underline">
+                      {it.title}
+                    </Link>
+                  </h2>
+                  {it.excerpt && <p className="mt-2 text-sm opacity-80">{it.excerpt}</p>}
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {it.date && <span className="text-xs opacity-70">{it.date}</span>}
+                    {it.tags?.slice(0, 2).map((t) => (
+                      <span key={t} className="text-[11px] rounded-full border px-2 py-0.5 opacity-80">{t}</span>
+                    ))}
+                  </div>
                 </div>
-              )}
-              <h2 className="!mt-0">
-                <Link href={`/blog/${it.slug}`}>{it.title}</Link>
-              </h2>
-              {it.excerpt && <p>{it.excerpt}</p>}
-              {it.date && <p><small>{it.date}</small></p>}
-            </article>
-          );
-        })}
-      </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
     </main>
   );
 }

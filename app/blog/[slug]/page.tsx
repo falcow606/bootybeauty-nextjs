@@ -58,10 +58,10 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   const { ok, data, status, error } = await fetchArticlesFromApi();
   if (!ok) {
     return (
-      <main className="prose mx-auto p-6">
-        <h1>Blog indisponible</h1>
-        <p>Impossible de charger <code>/api/blog</code>. ({status})</p>
-        {error && <p><small>{error}</small></p>}
+      <main className="mx-auto max-w-3xl px-4 py-10">
+        <h1 className="text-2xl font-semibold">Blog indisponible</h1>
+        <p className="mt-2 text-sm opacity-70">Impossible de charger <code>/api/blog</code>. (status {status})</p>
+        {error && <p className="mt-2 text-sm opacity-70">{error}</p>}
       </main>
     );
   }
@@ -71,11 +71,9 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
 
   if (!article) {
     return (
-      <main className="prose mx-auto p-6">
-        <h1>Article introuvable</h1>
-        <p><strong>Recherché :</strong> {s}</p>
-        <p><strong>Slugs disponibles :</strong></p>
-        <pre>{JSON.stringify(data.map(a => a.slug), null, 2)}</pre>
+      <main className="mx-auto max-w-3xl px-4 py-10">
+        <h1 className="text-2xl font-semibold">Article introuvable</h1>
+        <p className="mt-2 text-sm opacity-70"><strong>Recherché :</strong> {s}</p>
       </main>
     );
   }
@@ -96,36 +94,49 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
     return out;
   };
 
-  // petit helper pour éviter l’icône image cassée
   const safeCover = typeof article.cover === "string" && /^https?:\/\//.test(article.cover) ? article.cover : undefined;
 
   return (
-    <main className="prose mx-auto p-6">
-      <h1>{article.title}</h1>
-      {article.subtitle && <p><em>{article.subtitle}</em></p>}
-      {article.date && <p><small>Publié le {article.date}</small></p>}
-
-      {/* 🔥 Afficher le corps AVANT l'image pour valider que le contenu sort bien */}
-      {bodyHtml
-        ? <article dangerouslySetInnerHTML={{ __html: bodyHtml }} />
-        : bodyMd
-          ? <article>{mdToElements(bodyMd)}</article>
-          : (article.excerpt && <p>{article.excerpt}</p>)
-      }
-
-      {/* Image en bas + unoptimized pour by-passer les soucis de loader */}
+    <article className="mx-auto max-w-3xl px-4 py-10">
+      {/* HERO */}
       {safeCover && (
-        <div className="relative w-full aspect-[16/9] mt-6">
+        <div className="relative w-full aspect-[16/9] rounded-2xl overflow-hidden shadow-sm">
           <Image
             src={safeCover}
             alt={article.title ?? "cover"}
             fill
-            sizes="(max-width: 768px) 100vw, 768px"
-            priority
-            unoptimized        // <= clé pour stopper l’icône cassée tant qu’on débug
+            sizes="(max-width: 768px) 100vw, 1024px"
+            className="object-cover"
+            unoptimized
           />
         </div>
       )}
-    </main>
+
+      {/* HEADER */}
+      <header className="mt-6">
+        <h1 className="text-3xl md:text-4xl font-semibold leading-tight tracking-tight">{article.title}</h1>
+        {article.subtitle && (
+          <p className="mt-2 text-lg md:text-xl italic opacity-80">{article.subtitle}</p>
+        )}
+        {(article.date || (article.tags && article.tags.length)) && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {article.date && <span className="text-sm opacity-70">{article.date}</span>}
+            {article.tags?.map((t) => (
+              <span key={t} className="text-xs rounded-full border px-2 py-0.5 opacity-80">{t}</span>
+            ))}
+          </div>
+        )}
+      </header>
+
+      {/* CONTENT */}
+      <div className="prose prose-neutral md:prose-lg max-w-none mt-6">
+        {bodyHtml
+          ? <article dangerouslySetInnerHTML={{ __html: bodyHtml }} />
+          : bodyMd
+            ? <article>{mdToElements(bodyMd)}</article>
+            : (article.excerpt && <p>{article.excerpt}</p>)
+        }
+      </div>
+    </article>
   );
 }
