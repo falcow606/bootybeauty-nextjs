@@ -1,7 +1,7 @@
 // app/api/content/route.ts
 import { NextResponse } from "next/server";
 
-/** Vercel/Local ENV: SHEETS_CONTENT_CSV = URL CSV "Publier sur le web" de l’onglet Content */
+/** Vercel/Local ENV: SHEETS_CONTENT_CSV = URL CSV "Publier sur le web" (onglet Content) */
 const CSV_URL = process.env.SHEETS_CONTENT_CSV || "";
 
 /** Parser CSV robuste (guillemets, "" échappés, virgules et sauts de ligne dans cellules) */
@@ -36,7 +36,7 @@ function parseCsv(text: string): string[][] {
 function normalizeHeader(h: string) {
   return h.toLowerCase().replace(/\s+/g, "_");
 }
-function strTrue(v: string | undefined) {
+function strTrue(v: string | undefined): boolean {
   const s = (v || "").trim().toLowerCase();
   return s === "1" || s === "true" || s === "oui" || s === "yes";
 }
@@ -53,8 +53,8 @@ type ContentItemRaw = {
   title: string;
   brand?: string;
   hero?: string;
-  pros: string[];   // toujours array (évent. vide)
-  cons: string[];   // idem
+  pros: string[];
+  cons: string[];
   howto?: string;
   bodyHtml?: string;
   bodyMd?: string;
@@ -63,7 +63,6 @@ type ContentItemRaw = {
   excerpt?: string;
   published: boolean;
 };
-
 type ContentItemPublic = Omit<ContentItemRaw, "published">;
 
 export const dynamic = "force-dynamic";
@@ -73,10 +72,7 @@ export const runtime = "nodejs";
 export async function GET(req: Request) {
   try {
     if (!CSV_URL) {
-      return NextResponse.json(
-        { ok: false, error: "SHEETS_CONTENT_CSV missing" },
-        { status: 500 }
-      );
+      return NextResponse.json({ ok: false, error: "SHEETS_CONTENT_CSV missing" }, { status: 500 });
     }
 
     const { searchParams } = new URL(req.url);
@@ -85,10 +81,7 @@ export async function GET(req: Request) {
 
     const res = await fetch(CSV_URL, { cache: "no-store" });
     if (!res.ok) {
-      return NextResponse.json(
-        { ok: false, error: `CSV HTTP ${res.status}` },
-        { status: 502 }
-      );
+      return NextResponse.json({ ok: false, error: `CSV HTTP ${res.status}` }, { status: 502 });
     }
 
     const text = await res.text();
@@ -98,6 +91,11 @@ export async function GET(req: Request) {
     }
 
     const headers = table[0].map(normalizeHeader);
+
+    // Si aucune colonne de publication n'existe, on publie par défaut
+    const hasPublishCol = headers.some((h) =>
+      ["published", "publish", "is_published", "status", "etat"].includes(h)
+    );
 
     const items: ContentItemRaw[] = table.slice(1).map((cols) => {
       const row: Record<string, string> = {};
@@ -109,8 +107,14 @@ export async function GET(req: Request) {
       const subtitle = row.subtitle || row.sous_titre || "";
       const excerpt  = row.excerpt || row.intro || "";
 
-      const slug   = (row.slug || slugify(title)).trim();
-      const rating = parseFloat(row.rating || row.note || "");
+      const slug = (row.slug || slugify(title)).trim();
+
+      // Note: accepte "note_globale_(sur_5)" (entête vu dans ton diag)
+      const ratingRaw =
+        row.rating ||
+        row.note ||
+        row["note_globale_(sur_5)"];
+      const rating = ratingRaw ? parseFloat(ratingRaw.replace(",", ".")) : NaN;
 
       const pros = (row.pros || row.avantages || "")
         .split(/\n|\|/)
@@ -122,13 +126,37 @@ export async function GET(req: Request) {
         .map((s) => s.trim())
         .filter(Boolean);
 
-      const howto   = row.howto || row.routine || row.conseils || "";
+      const howto =
+        row.howto ||
+        row.how_to ||
+        row.routine ||
+        row.conseils ||
+        "";
 
-      const bodyHtml = row.bodyhtml || row.html || row.corpshtml || "";
-      const bodyMd   = row.bodymd || row.body || row.corps || row.content || "";
+      const bodyHtml =
+        row.bodyhtml ||
+        row.html ||
+        row.corpshtml ||
+        "";
 
-      const published =
-        strTrue(row.published) || strTrue(row.publish) || strTrue(row.is_published);
+      const bodyMd =
+        row.bodymd ||
+        row.body ||
+        row.corps ||
+        row.content ||
+        "";
+
+      // Publication : si la colonne est absente → TRUE par défaut
+      let published = hasPublishCol
+        ? (
+            strTrue(row.published) ||
+            strTrue(row.publish) ||
+            strTrue(row.is_published) ||
+            ["published", "online", "live", "publié", "publie"].includes(
+              (row.status || row.etat || "").trim().toLowerCase()
+            )
+          )
+        : true;
 
       const base: ContentItemRaw = {
         slug,
