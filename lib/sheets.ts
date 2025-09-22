@@ -224,3 +224,50 @@ export async function getBlogPostBySlug(slug: string): Promise<BlogRow | null> {
   const key = normalizeSlug(slug);
   return list.find(p => normalizeSlug(p.slug || "") === key) || null;
 }
+/* ------------------------------------------------------------------ */
+/* Exports de compatibilité (sitemap / top-10)                        */
+/* ------------------------------------------------------------------ */
+
+export type OfferSummary = {
+  slug: string;
+  title: string;
+  brand?: string;
+  price?: string;
+  imageUrl?: string;
+  affiliateUrl?: string;
+};
+
+/** Raccourci "featured" = on prend les 3 premières offres (ou celles marquées "Featured" si la colonne existe) */
+export async function getFeatured(): Promise<OfferSummary[]> {
+  const rows = await getOffers();
+
+  // si une colonne "featured" existe, on l'utilise, sinon on prend les 3 premières
+  const pick = rows
+    .map(r => ({
+      slug: r.slug || normalizeSlug(r.title || ""),
+      title: r.title || "",
+      brand: r.brand,
+      price: r.price,
+      imageUrl: r.imageUrl,
+      affiliateUrl: r.affiliateUrl,
+    }))
+    .filter(x => x.title);
+
+  return pick.slice(0, 3);
+}
+
+/** Top-10 très simple: 10 premières offres propres, pour compat avec la page Top-10 */
+export async function getTop10(): Promise<OfferSummary[]> {
+  const rows = await getOffers();
+  return rows
+    .map(r => ({
+      slug: r.slug || normalizeSlug(r.title || ""),
+      title: r.title || "",
+      brand: r.brand,
+      price: r.price,
+      imageUrl: r.imageUrl,
+      affiliateUrl: r.affiliateUrl,
+    }))
+    .filter(x => x.title)
+    .slice(0, 10);
+}
