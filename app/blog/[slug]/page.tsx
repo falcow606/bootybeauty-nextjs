@@ -25,37 +25,68 @@ function slugify(s: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-/** ✅ fetch RELATIF (évite headers(), VERCEL_URL, etc.) */
-async function fetchArticlesFromApi(): Promise<Article[]> {
-  const res = await fetch(`/api/blog`, { cache: "no-store" });
-  if (!res.ok) {
-    throw new Error(`Blog API error: ${res.status}`);
-  }
-  return res.json();
+function getBaseUrl() {
+  // 1) préférer NEXT_PUBLIC_SITE_URL si défini
+  const site = process.env.NEXT_PUBLIC_SITE_URL;
+  if (site) return site.replace(/\/$/, "");
+  // 2) sinon VERCEL_URL (sans protocole)
+  const host = process.env.VERCEL_URL || process.env.NEXT_PUBLIC_VERCEL_URL;
+  if (host) return `https://${host.replace(/\/$/, "")}`;
+  // 3) fallback local
+  return "http://localhost:3000";
 }
 
-// ⚠️ ton projet semble typer params en Promise — on garde ce contrat
+async function fetchArticlesFromApi(): Promise<{ ok: boolean; data: Article[]; status: number; error?: string }> {
+  const url = `${getBaseUrl()}/api/blog`;
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return { ok: false, data: [], status: res.status, error: `HTTP ${res.status}` };
+    const data = (await res.json()) as Article[];
+    return { ok: true, data, status: 200 };
+  } catch (e: any) {
+    return { ok: false, data: [], status: 0, error: e?.message || String(e) };
+  }
+}
+
+// ton projet semble typer params en Promise — on respecte
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const s = decodeURIComponent(slug).trim().toLowerCase();
 
-  let articles: Article[] = [];
-  try {
-    articles = await fetchArticlesFromApi();
-  } catch (err) {
-    // log serveur utile sur Vercel
-    console.error("[blog/[slug]] fetchArticlesFromApi failed:", err);
-    // On peut renvoyer un 404 propre si l’API est KO
-    return notFound();
+  const { ok, data, status, error } = await fetchArticlesFromApi();
+
+  // MODE DEBUG: si API KO, on affiche une page d’info plutôt qu’un crash 500
+  if (!ok) {
+    return (
+      <main className="prose mx-auto p-6">
+        <h1>Blog indisponible</h1>
+        <p>Impossible de charger <code>/api/blog</code>.</p>
+        <ul>
+          <li><strong>Status:</strong> {status}</li>
+          <li><strong>Base URL:</strong> {getBaseUrl()}</li>
+          {error && <li><strong>Error:</strong> {error}</li>}
+        </ul>
+        <p>Vérifie la variable <code>NEXT_PUBLIC_SITE_URL</code> dans Vercel et re-déploie.</p>
+      </main>
+    );
   }
 
   const article =
-    articles.find(a => (a.slug ?? "").trim().toLowerCase() === s) ??
-    articles.find(a => a.title && slugify(a.title) === s);
+    data.find(a => (a.slug ?? "").trim().toLowerCase() === s) ??
+    data.find(a => a.title && slugify(a.title) === s);
 
   if (!article) {
-    console.error("[blog/[slug]] not found for", s, "have slugs:", articles.map(a => a.slug).join(", "));
-    return notFound();
+    // MODE DEBUG: on montre les slugs dispo pour t’aider à voir le décalage
+    return (
+      <main className="prose mx-auto p-6">
+        <h1>Article introuvable</h1>
+        <p><strong>Recherché :</strong> {s}</p>
+        <p><strong>Slugs disponibles :</strong></p>
+        <pre>{JSON.stringify(data.map(a => a.slug), null, 2)}</pre>
+        <p>Si le slug figure bien dans la liste ci-dessus, rafraîchis l’index :</p>
+        <code>/api/revalidate?secret=booty_secret_123&path=/blog/{s}</code>
+      </main>
+    );
   }
 
   return (
