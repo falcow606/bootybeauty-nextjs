@@ -196,9 +196,20 @@ export async function GET(req: Request) {
       });
     }
 
+    // Sortie publique : recopier explicitement sans "published" (évite unused vars & any)
     const sanitized: ItemPublic[] = filtered.map((it) => {
-      const { published: _p, ...rest } = it;
-      return rest;
+      const out: ItemPublic = {
+        slug: it.slug,
+        title: it.title,
+      };
+      if (it.subtitle) out.subtitle = it.subtitle;
+      if (it.excerpt) out.excerpt = it.excerpt;
+      if (it.cover) out.cover = it.cover;
+      if (it.date) out.date = it.date;
+      if (it.tags && it.tags.length) out.tags = it.tags;
+      if (it.bodyHtml) out.bodyHtml = it.bodyHtml;
+      if (it.bodyMd) out.bodyMd = it.bodyMd;
+      return out;
     });
 
     return NextResponse.json(sanitized);

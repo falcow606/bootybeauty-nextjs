@@ -1,5 +1,4 @@
 // app/p/[slug]/page.tsx
-import React from "react";
 import Image from "next/image";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +16,7 @@ type ContentItem = {
   bodyHtml?: string;
   bodyMd?: string;
   rating?: number;
-  subtitle?: string; // si ta sheet a un sous-titre pour la fiche
+  subtitle?: string; // sous-titre éventuel
   excerpt?: string;  // intro courte éventuelle
 };
 
@@ -36,14 +35,18 @@ type Offer = {
 };
 
 function slugify(s: string) {
-  return s.toLowerCase()
+  return s
+    .toLowerCase()
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 function normalize(s?: string) {
-  return (s || "").toLowerCase()
+  return (s || "")
+    .toLowerCase()
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, " ").trim();
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 function getBaseUrl() {
   const site = process.env.NEXT_PUBLIC_SITE_URL;
@@ -80,6 +83,7 @@ function pickBestOffer(content: ContentItem, offers: Offer[]): Offer | undefined
   const nTitle = normalize(content.title);
   const nBrand = normalize(content.brand);
   let best: { offer: Offer; score: number } | undefined;
+
   for (const off of offers) {
     const oTitle = normalize(off.title);
     const oBrand = normalize(off.brand);
@@ -95,7 +99,11 @@ function pickBestOffer(content: ContentItem, offers: Offer[]): Offer | undefined
 function renderPrice(value?: number | string) {
   if (value == null) return undefined;
   if (typeof value === "string") return value;
-  try { return `${value.toFixed(2)} €`; } catch { return `${value} €`; }
+  try {
+    return `${value.toFixed(2)} €`;
+  } catch {
+    return `${value} €`;
+  }
 }
 
 function Stars({ rating }: { rating?: number }) {
@@ -114,15 +122,20 @@ function Stars({ rating }: { rating?: number }) {
   );
 }
 
-// NOTE: ton projet tape params comme Promise — on respecte
-export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
+// NOTE: votre projet tape params comme Promise — on respecte
+export default async function ProductPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
   const { slug } = await params;
   const s = decodeURIComponent(slug).trim().toLowerCase();
 
   const [contentList, offers] = await Promise.all([fetchContent(), fetchOffers()]);
+
   const content =
-    contentList.find(c => (c.slug ?? "").trim().toLowerCase() === s) ||
-    contentList.find(c => c.title && slugify(c.title) === s);
+    contentList.find((c) => (c.slug ?? "").trim().toLowerCase() === s) ||
+    contentList.find((c) => c.title && slugify(c.title) === s);
 
   if (!content) {
     return (
@@ -148,8 +161,10 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
 
   // Intro courte : priorité à excerpt, sinon 1er paragraphe du bodyMd
   const intro =
-    (content as any).excerpt ||
-    (typeof content.bodyMd === "string" ? content.bodyMd.split(/\n{2,}/)[0] : undefined);
+    content.excerpt ??
+    (typeof content.bodyMd === "string"
+      ? content.bodyMd.split(/\n{2,}/)[0]
+      : undefined);
 
   return (
     <article className="mx-auto max-w-5xl px-4 py-10">
@@ -175,7 +190,9 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
 
         {/* RIGHT INFO */}
         <div className="flex flex-col">
-          <h1 className="text-3xl md:text-4xl font-semibold leading-tight tracking-tight">{title}</h1>
+          <h1 className="text-3xl md:text-4xl font-semibold leading-tight tracking-tight">
+            {title}
+          </h1>
           {content.subtitle && (
             <p className="mt-1 text-lg opacity-80 italic">{content.subtitle}</p>
           )}
@@ -188,11 +205,11 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
               </div>
             )}
             {brand && (
-              <span className="text-sm rounded-full border px-2 py-0.5">{brand}</span>
+              <span className="text-sm rounded-full border px-2 py-0.5">
+                {brand}
+              </span>
             )}
-            {typeof content.rating === "number" && (
-              <Stars rating={content.rating} />
-            )}
+            {typeof content.rating === "number" && <Stars rating={content.rating} />}
           </div>
 
           {/* Intro */}
@@ -207,7 +224,9 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             <div className="mt-4 rounded-2xl border p-4 bg-white/60">
               <h2 className="text-base font-semibold">Pourquoi on aime</h2>
               <ul className="mt-2 list-disc pl-5 space-y-1">
-                {content.pros.map((p, i) => <li key={`pro-${i}`}>{p}</li>)}
+                {content.pros.map((p, i) => (
+                  <li key={`pro-${i}`}>{p}</li>
+                ))}
               </ul>
             </div>
           )}
@@ -226,7 +245,8 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
                     Voir l’offre
                   </a>
                   <p className="mt-1 text-xs opacity-60">
-                    *Lien affilié : peut nous rapporter une petite commission sans coût supplémentaire pour toi.
+                    *Lien affilié : peut nous rapporter une petite commission
+                    sans coût supplémentaire pour toi.
                   </p>
                 </div>
               )}
@@ -263,7 +283,9 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           <section className="rounded-2xl border p-5 bg-white/60">
             <h2 className="text-xl font-semibold">Points d’attention</h2>
             <ul className="mt-2 list-disc pl-5 space-y-1">
-              {content.cons.map((c, i) => <li key={`con-${i}`}>{c}</li>)}
+              {content.cons.map((c, i) => (
+                <li key={`con-${i}`}>{c}</li>
+              ))}
             </ul>
           </section>
         )}
