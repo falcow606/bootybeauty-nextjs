@@ -50,24 +50,24 @@ export default async function Top10Page() {
             </h3>
 
             <div className="space-x-3">
-              {x.affiliate && (
+              {x.affiliateUrl ? (
                 <AffiliateLink
-                  href={x.affiliate}
-                  merchant="Amazon"
+                  href={x.affiliateUrl}
+                  merchant={x.brand || 'Marchand'}
                   slug={x.slug}
                   pos={i + 1}
                   className="inline-flex items-center rounded-xl bg-[#C4A092] px-4 py-2 text-white hover:opacity-90"
                 >
                   Voir l’offre
                 </AffiliateLink>
+              ) : (
+                <Link
+                  className="inline-flex items-center rounded-xl px-4 py-2 border text-sm hover:bg-gray-50"
+                  href={`/p/${x.slug}`}
+                >
+                  Voir la fiche
+                </Link>
               )}
-
-              <Link
-                className="inline-flex items-center rounded-xl px-4 py-2 border text-sm hover:bg-gray-50"
-                href={`/p/${x.slug}`}
-              >
-                Voir la fiche
-              </Link>
             </div>
           </div>
         ))}
