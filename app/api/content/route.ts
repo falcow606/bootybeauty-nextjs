@@ -147,7 +147,7 @@ export async function GET(req: Request) {
         "";
 
       // Publication : si la colonne est absente → TRUE par défaut
-      let published = hasPublishCol
+      const published = hasPublishCol
         ? (
             strTrue(row.published) ||
             strTrue(row.publish) ||
