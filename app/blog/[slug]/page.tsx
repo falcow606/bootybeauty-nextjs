@@ -21,8 +21,7 @@ type Article = {
 function slugify(s: string) {
   return s
     .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
@@ -30,25 +29,28 @@ function slugify(s: string) {
 async function fetchArticlesFromApi(): Promise<Article[]> {
   const h = headers();
   const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto =
-    h.get("x-forwarded-proto") ?? (host?.includes("localhost") ? "http" : "https");
+  const proto = h.get("x-forwarded-proto") ?? (host?.includes("localhost") ? "http" : "https");
   const baseUrl = `${proto}://${host}`;
   const res = await fetch(`${baseUrl}/api/blog`, { cache: "no-store" });
   if (!res.ok) throw new Error("Blog API error");
   return res.json();
 }
 
-export default async function Page({ params }: { params: { slug: string } }) {
-  const s = decodeURIComponent(params.slug).trim().toLowerCase();
+// NOTE: Ici on tape explicitement sur un params "Promise<{ slug: string }>" pour matcher ton PageProps custom
+export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params; // ✅ attend le Promise attendu par ton type
+  const s = decodeURIComponent(slug).trim().toLowerCase();
+
   const articles = await fetchArticlesFromApi();
 
   const article =
-    articles.find((a) => (a.slug ?? "").trim().toLowerCase() === s) ??
-    articles.find((a) => a.title && slugify(a.title) === s);
+    articles.find(a => (a.slug ?? "").trim().toLowerCase() === s) ??
+    articles.find(a => a.title && slugify(a.title) === s);
 
   if (!article) {
+    // log serveur utile dans Vercel
     console.error("[blog/[slug]] not found for", s, "have slugs:", articles.map(a => a.slug).join(", "));
-    notFound();
+    return notFound();
   }
 
   return (
@@ -70,7 +72,7 @@ export default async function Page({ params }: { params: { slug: string } }) {
 
       {article.date && <p><small>Publié le {article.date}</small></p>}
       {article.excerpt && <p>{article.excerpt}</p>}
-      {/* Si tu exposes un body HTML/MD dans l'API, tu peux l'injecter ici */}
+      {/* TODO: si tu exposes un body HTML/MD dans /api/blog, rends-le ici */}
     </main>
   );
 }
