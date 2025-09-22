@@ -1,4 +1,3 @@
-// app/blog/[slug]/page.tsx
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -11,26 +10,21 @@ import { Bodoni_Moda, Nunito_Sans } from "next/font/google";
 const bodoni = Bodoni_Moda({ subsets: ["latin"], style: ["normal"], weight: ["400","600","700"] });
 const nunito = Nunito_Sans({ subsets: ["latin"], weight: ["300","400","600","700"] });
 
-/* ----------------------------- Types ----------------------------- */
-
 type CSVRow = Record<string, string>;
 type Post = {
   slug: string;
   title: string;
   subtitle?: string;
   hero?: string;
-  html?: string;   // si N8N renvoie déjà du HTML
-  intro?: string;  // intro en texte/markdown
-  body?: string;   // corps en texte/markdown
+  html?: string;
+  intro?: string;
+  body?: string;
   date?: string;
   tags?: string[];
-  isPublished?: boolean;
 };
 
 type Params = { slug: string };
 type PageProps = { params: Promise<Params> };
-
-/* ---------------------------- Helpers ---------------------------- */
 
 function pick(obj: Record<string, unknown>, keys: string[]): string | undefined {
   for (const k of keys) {
@@ -47,19 +41,19 @@ function pick(obj: Record<string, unknown>, keys: string[]): string | undefined 
   return undefined;
 }
 
-// CSV tolérant — pas de flag 's' (dotAll), compatible ES2017
+// CSV tolérant — compatible ES2017 (pas de flag "s")
 function parseCSV(text: string): CSVRow[] {
   const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
   if (lines.length === 0) return [];
 
   const split = (line: string): string[] => {
-    const re = /,(?=(?:(?:[^"]*"){2})*[^"]*$)/g; // virgule hors guillemets
+    const re = /,(?=(?:(?:[^"]*"){2})*[^"]*$)/g; // virgules hors guillemets
     return line
       .split(re)
       .map((c) =>
         c
-          .replace(/^"([\s\S]*)"$/, "$1") // remplace les guillemets englobants
-          .replace(/""/g, `"`)            // échappement CSV
+          .replace(/^"([\s\S]*)"$/, "$1") // enlève guillemets englobants
+          .replace(/""/g, `"`)            // CSV escaping
           .trim()
       );
   };
@@ -103,19 +97,12 @@ async function fetchBlogCSV(): Promise<CSVRow[]> {
   return parseCSV(text);
 }
 
-function toBool(v?: string): boolean {
-  if (!v) return false;
-  const s = v.trim().toLowerCase();
-  return ["oui", "yes", "true", "1", "ok", "y"].includes(s);
-}
-
 function mapRowToPost(row: CSVRow): Post | null {
   const slug = pick(row, ["slug", "Slug"]);
   const title = pick(row, ["title", "Title"]);
   if (!slug || !title) return null;
 
   const subtitle = pick(row, ["subtitle", "Subtitle"]);
-  // Hero/cover acceptés
   const hero = pick(row, ["hero", "Hero", "Hero_Image", "Hero URL", "Image", "Cover", "cover"]);
   const html = pick(row, ["html", "HTML"]);
   const intro = pick(row, ["intro", "Intro", "Description", "Excerpt"]);
@@ -123,20 +110,8 @@ function mapRowToPost(row: CSVRow): Post | null {
   const date = pick(row, ["date", "Date"]);
   const tagsRaw = pick(row, ["tags", "Tags"]);
   const tags = tagsRaw ? tagsRaw.split(",").map((t) => t.trim()).filter(Boolean) : [];
-  const published = pick(row, ["published", "Published"]);
 
-  return {
-    slug: slug.trim(),
-    title: title.trim(),
-    subtitle,
-    hero,
-    html,
-    intro,
-    body,
-    date,
-    tags,
-    isPublished: toBool(published),
-  };
+  return { slug: slug.trim(), title: title.trim(), subtitle, hero, html, intro, body, date, tags };
 }
 
 function toHtmlParagraphs(text?: string): React.ReactNode {
@@ -150,7 +125,7 @@ function toHtmlParagraphs(text?: string): React.ReactNode {
     ));
 }
 
-/* ---------------------- Metadata dynamique ---------------------- */
+/* -------------------- Metadata dynamique -------------------- */
 
 export async function generateMetadata(
   { params }: { params: Promise<Params> }
@@ -158,7 +133,7 @@ export async function generateMetadata(
   const { slug } = await params;
   const rows = await fetchBlogCSV();
   const posts = rows.map(mapRowToPost).filter((p): p is Post => p !== null);
-  const post = posts.find((p) => p.slug.trim().toLowerCase() === slug.trim().toLowerCase());
+  const post = posts.find((p) => p.slug.toLowerCase() === slug.trim().toLowerCase());
 
   const title = post?.title ? `${post.title} — Le Blog` : "Article — Le Blog";
   const description = post?.subtitle || post?.intro || "Article du blog beauté Booty & Cutie.";
@@ -178,9 +153,10 @@ export default async function BlogPostPage({ params }: PageProps) {
   const { slug } = await params;
 
   const rows = await fetchBlogCSV();
-  const posts = rows.map(mapRowToPost).filter((p): p is Post => p !== null && p.isPublished !== false);
+  const posts = rows.map(mapRowToPost).filter((p): p is Post => p !== null);
 
-  const post = posts.find((p) => p.slug.trim().toLowerCase() === slug.trim().toLowerCase()) || null;
+  const key = slug.trim().toLowerCase();
+  const post = posts.find((p) => p.slug.trim().toLowerCase() === key) || null;
 
   if (!post) {
     return (
