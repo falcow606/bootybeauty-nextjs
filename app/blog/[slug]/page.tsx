@@ -1,4 +1,5 @@
 // app/blog/[slug]/page.tsx
+import React from "react";
 import Image from "next/image";
 
 export const dynamic = "force-dynamic";
@@ -49,7 +50,7 @@ async function fetchArticlesFromApi(): Promise<ApiResult> {
   }
 }
 
-// NOTE: ton projet tape params comme une Promise — on respecte
+// NOTE: ton projet tape params comme Promise — on respecte
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const s = decodeURIComponent(slug).trim().toLowerCase();
@@ -87,10 +88,10 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
   const bodyHtml = (article as Article).bodyHtml;
   const bodyMd = (article as Article).bodyMd;
 
-  const mdToElements = (md: string) => {
-    // Conversion légère : titres "## ", "### " et paragraphes
+  // ✅ tape sur React.ReactNode[] (évite "Cannot find namespace 'JSX'")
+  const mdToElements = (md: string): React.ReactNode[] => {
     const lines = md.split(/\r?\n/);
-    const out: JSX.Element[] = [];
+    const out: React.ReactNode[] = [];
     lines.forEach((ln, i) => {
       const l = ln.trim();
       if (!l) return;
@@ -120,7 +121,6 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
 
       {article.date && <p><small>Publié le {article.date}</small></p>}
 
-      {/* Corps prioritaire */}
       {bodyHtml
         ? <article dangerouslySetInnerHTML={{ __html: bodyHtml }} />
         : bodyMd
