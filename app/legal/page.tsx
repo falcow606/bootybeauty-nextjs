@@ -36,11 +36,7 @@ export default function LegalPage() {
         <section className="mt-8 space-y-6">
           <article className={`${nunito.className} rounded-3xl border p-6`} style={{ borderColor: "var(--bg-light)", color: "var(--text)" }}>
             <h2 className="text-xl font-semibold mb-2">Éditeur du site</h2>
-            <p>Nom / Raison sociale : <strong>TODO_NOM_ENTREPRISE</strong></p>
-            <p>Forme / Capital : <strong>TODO_FORME_SOCIALE</strong> (ex. micro-entreprise / SAS / etc.)</p>
-            <p>Siège social : <strong>TODO_ADRESSE_POSTALE</strong></p>
-            <p>Responsable de la publication : <strong>TODO_NOM_RESPONSABLE</strong></p>
-            <p>Contact : <strong>TODO_EMAIL</strong> (et/ou téléphone)</p>
+            <p>Contact : <strong>bootyandcutie@gmail.com</strong></p>
           </article>
 
           <article className={`${nunito.className} rounded-3xl border p-6`} style={{ borderColor: "var(--bg-light)", color: "var(--text)" }}>
