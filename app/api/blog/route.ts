@@ -1,190 +1,123 @@
 // app/api/blog/route.ts
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
+import { NextResponse } from "next/server";
 
-/* ---------------------------- Types & helpers ---------------------------- */
+const CSV_URL = process.env.SHEETS_BLOG_CSV || "";
 
-type Row = Record<string, string>;
-
-type ApiItem = {
-  slug: string;
-  title: string;
-  subtitle?: string;
-  excerpt?: string;
-  cover?: string;
-  date?: string;
-  tags: string[];
-  // diag facultatif
-  publishedRaw?: string;
-  isPublished?: boolean;
-};
-
-function truthy(v: unknown): boolean {
-  if (typeof v === "boolean") return v;
-  if (typeof v === "number") return v > 0;
-  if (v == null) return false;
-  const s = String(v).trim().toLowerCase();
-  return s === "oui" || s === "yes" || s === "true" || s === "1" || s === "y" || s === "ok";
-}
-
-/** Parser CSV RFC 4180 : gère virgules ET retours-ligne dans les champs entre guillemets */
-function parseCSV(text: string): Row[] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = "";
+function splitCsvLine(line: string): string[] {
+  // Split par virgules en ignorant celles entre guillemets
+  const parts: string[] = [];
+  let cur = "";
   let inQuotes = false;
 
-  // Retire BOM éventuel
-  if (text.charCodeAt(0) === 0xfeff) {
-    text = text.slice(1);
-  }
-
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-
-    if (inQuotes) {
-      if (c === '"') {
-        const next = text[i + 1];
-        if (next === '"') {
-          field += '"'; // échappement "" => "
-          i++;
-        } else {
-          inQuotes = false; // fin des guillemets
-        }
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        // échappement ""
+        cur += '"';
+        i++;
       } else {
-        field += c; // tout passe tel quel en mode quotes
+        inQuotes = !inQuotes;
       }
+    } else if (ch === "," && !inQuotes) {
+      parts.push(cur);
+      cur = "";
     } else {
-      if (c === '"') {
-        inQuotes = true;
-      } else if (c === ",") {
-        row.push(field.trim());
-        field = "";
-      } else if (c === "\r") {
-        // ignore CR, on traitera LF
-      } else if (c === "\n") {
-        row.push(field.trim());
-        rows.push(row);
-        row = [];
-        field = "";
-      } else {
-        field += c;
-      }
+      cur += ch;
     }
   }
-  // flush final
-  row.push(field.trim());
-  rows.push(row);
-
-  if (rows.length === 0) return [];
-
-  const header = rows[0];
-  const out: Row[] = [];
-  for (let i = 1; i < rows.length; i++) {
-    const r = rows[i];
-    // ignorer lignes vides de fin
-    if (r.length === 1 && r[0] === "") continue;
-    const o: Row = {};
-    header.forEach((h, idx) => {
-      o[h] = r[idx] ?? "";
-    });
-    out.push(o);
-  }
-  return out;
+  parts.push(cur);
+  return parts.map((s) => s.trim());
 }
 
-/** Récupère une valeur en étant tolérant au libellé (casse/espaces) */
-function pickCaseInsensitive(row: Row, keys: string[]): string | undefined {
-  const allKeys = Object.keys(row);
-  for (const k of keys) {
-    const hit = allKeys.find(
-      (kk) => kk.trim().toLowerCase() === k.trim().toLowerCase()
-    );
-    if (!hit) continue;
-    const t = row[hit].trim();
-    if (t) return t;
-  }
-  return undefined;
+function normalizeHeader(h: string) {
+  return h.toLowerCase().replace(/\s+/g, "_");
 }
 
-async function fetchSource(): Promise<Row[]> {
-  const url = process.env.SHEETS_BLOG_CSV || process.env.N8N_BLOG_URL;
-  if (!url) return [];
-
-  const headers: Record<string, string> = {};
-  if (process.env.N8N_BLOG_KEY) headers["x-api-key"] = String(process.env.N8N_BLOG_KEY);
-
-  const res = await fetch(url, { headers, cache: "no-store" });
-  if (!res.ok) return [];
-
-  const ct = res.headers.get("content-type") || "";
-  if (ct.includes("application/json")) {
-    const j = (await res.json()) as { items?: Row[]; data?: Row[] } | Row[];
-    if (Array.isArray(j)) return j;
-    if (j?.items && Array.isArray(j.items)) return j.items;
-    if (j?.data && Array.isArray(j.data)) return j.data;
-    return [];
-  }
-  const text = await res.text();
-  return parseCSV(text);
+function strTrue(v: string | undefined) {
+  const s = (v || "").trim().toLowerCase();
+  return s === "1" || s === "true" || s === "oui" || s === "yes";
 }
 
-/* --------------------------------- Route -------------------------------- */
+function slugify(s: string) {
+  return s
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const runtime = "nodejs";
 
 export async function GET(req: Request) {
-  if (!process.env.SHEETS_BLOG_CSV && !process.env.N8N_BLOG_URL) {
-    return new Response(
-      JSON.stringify({
-        ok: false,
-        error: "blog_env_missing",
-        expected: ["SHEETS_BLOG_CSV (recommandé)", "N8N_BLOG_URL (fallback)"],
-      }),
-      { status: 500, headers: { "content-type": "application/json" } }
-    );
-  }
-
-  const url = new URL(req.url);
-  const showAll = url.searchParams.get("all") === "1";
-  const withDiag = url.searchParams.get("diag") === "1";
-
   try {
-    const rows = await fetchSource();
+    if (!CSV_URL) {
+      return NextResponse.json({ ok: false, error: "SHEETS_BLOG_CSV missing" }, { status: 500 });
+    }
 
-    const list: ApiItem[] = rows
-      .map((r): ApiItem | null => {
-        const slug = pickCaseInsensitive(r, ["slug", "Slug"]);
-        const title = pickCaseInsensitive(r, ["title", "Title"]);
-        if (!slug || !title) return null;
+    const { searchParams } = new URL(req.url);
+    const all = searchParams.get("all") === "1";
+    const diag = searchParams.get("diag") === "1";
 
-        const publishedRaw =
-          pickCaseInsensitive(r, ["Published", "published", "Publié", "publie"]) ?? "";
-        const isPublished = truthy(publishedRaw);
-        if (!showAll && !isPublished) return null;
+    const res = await fetch(CSV_URL, { cache: "no-store" });
+    if (!res.ok) {
+      return NextResponse.json({ ok: false, error: `CSV HTTP ${res.status}` }, { status: 502 });
+    }
+    const text = await res.text();
+    const lines = text.replace(/\r\n/g, "\n").split("\n").filter(l => l.trim().length > 0);
 
-        const cover = pickCaseInsensitive(r, ["Cover", "Hero", "Hero_Image", "Image"]);
-        const subtitle = pickCaseInsensitive(r, ["Subtitle", "subtitle"]);
-        const excerpt =
-          pickCaseInsensitive(r, ["Excerpt", "excerpt", "Intro", "intro"]) ?? "";
-        const date = pickCaseInsensitive(r, ["Date", "date"]);
-        const tagsStr = pickCaseInsensitive(r, ["Tags", "tags"]) ?? "";
-        const tags = tagsStr
-          .split(",")
-          .map((t) => t.trim())
-          .filter((t) => t.length > 0);
+    if (lines.length < 2) {
+      return NextResponse.json({ ok: true, items: [] });
+    }
 
-        const base: ApiItem = { slug, title, subtitle, excerpt, cover, date, tags };
-        return withDiag ? { ...base, publishedRaw, isPublished } : base;
-      })
-      .filter((x): x is ApiItem => x !== null);
+    const headers = splitCsvLine(lines[0]).map(normalizeHeader);
+    const items = lines.slice(1).map((line, idx) => {
+      const cols = splitCsvLine(line);
+      const row: Record<string, string> = {};
+      headers.forEach((h, i) => (row[h] = cols[i] ?? ""));
 
-    return new Response(JSON.stringify(list), {
-      status: 200,
-      headers: { "content-type": "application/json" },
+      // Champs courants
+      const title = row.title || row.titre || "";
+      const subtitle = row.subtitle || row.sous_titre || "";
+      const excerpt = row.excerpt || row.resume || row.chapo || "";
+      const cover = row.cover || row.image || row.hero || "";
+      const date = row.date || "";
+      const tags = (row.tags || "").split("|").map(s => s.trim()).filter(Boolean);
+
+      // Slug explicite ou dérivé du titre
+      const slug = (row.slug || slugify(title)).trim();
+
+      // Body : supporte plusieurs conventions de colonnes
+      const bodyHtml = row.bodyhtml || row.html || row.corpshtml || "";
+      const bodyMd   = row.bodymd || row.body || row.corps || row.content || "";
+
+      // Published
+      const published = strTrue(row.published) || strTrue(row.publish) || strTrue(row.is_published);
+
+      const base = { slug, title, subtitle, excerpt, cover, date, tags, published };
+
+      if (bodyHtml) return { ...base, bodyHtml };
+      if (bodyMd)   return { ...base, bodyMd };
+      return base;
     });
-  } catch {
-    return new Response(
-      JSON.stringify({ ok: false, error: "blog_fetch_failed" }),
-      { status: 500, headers: { "content-type": "application/json" } }
-    );
+
+    const filtered = all ? items : items.filter(it => it.published);
+
+    if (diag) {
+      return NextResponse.json({
+        ok: true,
+        count: filtered.length,
+        sample: filtered.slice(0, 3),
+        headers,
+      });
+    }
+
+    // ⚠️ Par défaut, on renvoie les champs publics (y compris body* si présents)
+    return NextResponse.json(filtered.map(({ published, ...rest }) => rest));
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
 }

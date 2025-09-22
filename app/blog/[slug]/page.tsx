@@ -13,14 +13,14 @@ type Article = {
   cover?: string;
   date?: string;
   tags?: string[];
-  body?: string;
+  bodyHtml?: string;
+  bodyMd?: string;
 };
 
 function slugify(s: string) {
   return s
     .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
@@ -33,16 +33,15 @@ function getBaseUrl() {
   return "http://localhost:3000";
 }
 
-type ApiResult = { ok: boolean; data: Article[]; status: number; error?: string };
+type ApiItem = Omit<Article, "bodyHtml" | "bodyMd"> & Partial<Pick<Article, "bodyHtml" | "bodyMd">>;
+type ApiResult = { ok: boolean; data: ApiItem[]; status: number; error?: string };
 
 async function fetchArticlesFromApi(): Promise<ApiResult> {
   const url = `${getBaseUrl()}/api/blog`;
   try {
     const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) {
-      return { ok: false, data: [], status: res.status, error: `HTTP ${res.status}` };
-    }
-    const data = (await res.json()) as Article[];
+    if (!res.ok) return { ok: false, data: [], status: res.status, error: `HTTP ${res.status}` };
+    const data = (await res.json()) as ApiItem[];
     return { ok: true, data, status: 200 };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -50,13 +49,12 @@ async function fetchArticlesFromApi(): Promise<ApiResult> {
   }
 }
 
-// NOTE: ton projet tape params comme une Promise — on respecte ce contrat ici
+// NOTE: ton projet tape params comme une Promise — on respecte
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const s = decodeURIComponent(slug).trim().toLowerCase();
 
   const { ok, data, status, error } = await fetchArticlesFromApi();
-
   if (!ok) {
     return (
       <main className="prose mx-auto p-6">
@@ -67,7 +65,6 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
           <li><strong>Base URL:</strong> {getBaseUrl()}</li>
           {error && <li><strong>Error:</strong> {error}</li>}
         </ul>
-        <p>Vérifie <code>NEXT_PUBLIC_SITE_URL</code> puis redéploie si besoin.</p>
       </main>
     );
   }
@@ -83,11 +80,26 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
         <p><strong>Recherché :</strong> {s}</p>
         <p><strong>Slugs disponibles :</strong></p>
         <pre>{JSON.stringify(data.map(a => a.slug), null, 2)}</pre>
-        <p>Si le slug est listé ci-dessus, lance&nbsp;:</p>
-        <code>/api/revalidate?secret=booty_secret_123&path=/blog/{s}</code>
       </main>
     );
   }
+
+  const bodyHtml = (article as Article).bodyHtml;
+  const bodyMd = (article as Article).bodyMd;
+
+  const mdToElements = (md: string) => {
+    // Conversion légère : titres "## ", "### " et paragraphes
+    const lines = md.split(/\r?\n/);
+    const out: JSX.Element[] = [];
+    lines.forEach((ln, i) => {
+      const l = ln.trim();
+      if (!l) return;
+      if (l.startsWith("### ")) out.push(<h3 key={`h3-${i}`}>{l.slice(4)}</h3>);
+      else if (l.startsWith("## ")) out.push(<h2 key={`h2-${i}`}>{l.slice(3)}</h2>);
+      else out.push(<p key={`p-${i}`}>{l}</p>);
+    });
+    return out;
+  };
 
   return (
     <main className="prose mx-auto p-6">
@@ -107,7 +119,14 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
       )}
 
       {article.date && <p><small>Publié le {article.date}</small></p>}
-      {article.excerpt && <p>{article.excerpt}</p>}
+
+      {/* Corps prioritaire */}
+      {bodyHtml
+        ? <article dangerouslySetInnerHTML={{ __html: bodyHtml }} />
+        : bodyMd
+          ? <article>{mdToElements(bodyMd)}</article>
+          : (article.excerpt && <p>{article.excerpt}</p>)
+      }
     </main>
   );
 }
