@@ -4,8 +4,11 @@ import Image from "next/image";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
-export async function generateMetadata({ params }: { params: { slug: string } }) {
-  return { alternates: { canonical: `/blog/${params.slug}` } };
+
+// ⚠️ Dans ton projet, Next tape params comme une Promise — on respecte ce contrat
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  return { alternates: { canonical: `/blog/${slug}` } };
 }
 
 type Article = {
@@ -37,9 +40,8 @@ function getBaseUrl() {
 }
 
 type ApiItem = Partial<Article> & Pick<Article, "slug" | "title">;
-type ApiResult = { ok: boolean; data: ApiItem[]; status: number; error?: string };
 
-async function fetchArticlesFromApi(): Promise<ApiResult> {
+async function fetchArticlesFromApi(): Promise<{ ok: boolean; data: ApiItem[]; status: number; error?: string }> {
   const url = `${getBaseUrl()}/api/blog`;
   try {
     const res = await fetch(url, { cache: "no-store" });
@@ -52,7 +54,10 @@ async function fetchArticlesFromApi(): Promise<ApiResult> {
   }
 }
 
-// NOTE: ton projet tape params comme Promise — on respecte
+function htmlToText(html: string) {
+  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const s = decodeURIComponent(slug).trim().toLowerCase();
@@ -62,34 +67,61 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
     return (
       <main className="mx-auto max-w-3xl px-4 py-10">
         <h1 className="text-2xl font-semibold">Blog indisponible</h1>
-        <p className="mt-2 text-sm opacity-70">Impossible de charger <code>/api/blog</code>. (status {status})</p>
+        <p className="mt-2 text-sm opacity-70">
+          Impossible de charger <code>/api/blog</code>. (status {status})
+        </p>
         {error && <p className="mt-2 text-sm opacity-70">{error}</p>}
       </main>
     );
   }
 
-  const article = data.find(a => (a.slug ?? "").trim().toLowerCase() === s)
-    ?? data.find(a => a.title && slugify(a.title) === s);
+  const article =
+    data.find((a) => (a.slug ?? "").trim().toLowerCase() === s) ??
+    data.find((a) => a.title && slugify(a.title) === s);
 
   if (!article) {
     return (
       <main className="mx-auto max-w-3xl px-4 py-10">
         <h1 className="text-2xl font-semibold">Article introuvable</h1>
-        <p className="mt-2 text-sm opacity-70"><strong>Recherché :</strong> {s}</p>
+        <p className="mt-2 text-sm opacity-70">
+          <strong>Recherché :</strong> {s}
+        </p>
       </main>
     );
   }
 
   const bodyHtml = article.bodyHtml;
   const bodyMd = article.bodyMd;
-  const safeCover =
-    typeof article.cover === "string" && /^https?:\/\//.test(article.cover) ? article.cover : undefined;
+  const safeCover = typeof article.cover === "string" && /^https?:\/\//.test(article.cover) ? article.cover : undefined;
+
+  // ---- JSON-LD (rich snippet BlogPosting) ----
+  const base = getBaseUrl();
+  const jsonLd: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: article.title,
+    description:
+      article.excerpt ??
+      (bodyHtml ? htmlToText(bodyHtml).slice(0, 300) : bodyMd ? bodyMd.slice(0, 300) : undefined),
+    image: safeCover,
+    datePublished: article.date,
+    author: { "@type": "Person", name: "Booty & Cutie" },
+    publisher: { "@type": "Organization", name: "Booty & Cutie" },
+    mainEntityOfPage: `${base}/blog/${article.slug}`,
+  };
 
   return (
     <article className="mx-auto max-w-3xl px-4 py-10">
+      {/* JSON-LD */}
+      <script
+        type="application/ld+json"
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+
       {/* HERO */}
       {safeCover && (
-        <div className="relative w-full aspect-[16/9] rounded-2xl overflow-hidden shadow-sm">
+        <div className="relative aspect-[16/9] w-full overflow-hidden rounded-2xl shadow-sm">
           <Image
             src={safeCover}
             alt={article.title ?? "cover"}
@@ -103,29 +135,28 @@ export default async function Page({ params }: { params: Promise<{ slug: string 
 
       {/* HEADER */}
       <header className="mt-6">
-        <h1 className="text-3xl md:text-4xl font-semibold leading-tight tracking-tight">{article.title}</h1>
-        {article.subtitle && (
-          <p className="mt-2 text-lg md:text-xl italic opacity-80">{article.subtitle}</p>
-        )}
+        <h1 className="text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+          {article.title}
+        </h1>
+        {article.subtitle && <p className="mt-2 text-lg italic opacity-80 md:text-xl">{article.subtitle}</p>}
         {(article.date || (article.tags && article.tags.length)) && (
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {article.date && <span className="text-sm opacity-70">{article.date}</span>}
             {article.tags?.map((t) => (
-              <span key={t} className="text-xs rounded-full border px-2 py-0.5 opacity-80">{t}</span>
+              <span key={t} className="rounded-full border px-2 py-0.5 text-xs opacity-80">
+                {t}
+              </span>
             ))}
           </div>
         )}
       </header>
 
       {/* CONTENT */}
-      <div className="prose prose-neutral md:prose-lg max-w-none mt-6">
+      <div className="prose prose-neutral mt-6 max-w-none md:prose-lg">
         {bodyHtml ? (
           <article dangerouslySetInnerHTML={{ __html: bodyHtml }} />
         ) : bodyMd ? (
-          // ✅ préserve les retours à la ligne de la Sheet
-          <article className="whitespace-pre-wrap leading-relaxed">
-            {bodyMd}
-          </article>
+          <article className="whitespace-pre-wrap leading-relaxed">{bodyMd}</article>
         ) : (
           article.excerpt && <p>{article.excerpt}</p>
         )}
