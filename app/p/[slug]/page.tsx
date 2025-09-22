@@ -175,10 +175,11 @@ function matchBySlug(slug: string, offer: Offer): boolean {
 }
 
 /* ---------------------- Page produit ---------------- */
-type PageProps = { params: { slug: string } };
+// ICI: params est un Promise<{ slug: string }>
+type PageProps = { params: Promise<{ slug: string }> };
 
 export default async function ProductPage({ params }: PageProps) {
-  const slug = params.slug;
+  const { slug } = await params;
 
   const offers = await fetchOffers();
   const offer =
