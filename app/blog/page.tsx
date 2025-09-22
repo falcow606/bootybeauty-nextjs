@@ -40,13 +40,15 @@ export default async function BlogIndex() {
       {!items.length ? (
         <p className="opacity-70">Aucun article pour l’instant.</p>
       ) : (
-        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid items-stretch gap-8 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((it) => {
-            const safeCover = typeof it.cover === "string" && /^https?:\/\//.test(it.cover) ? it.cover : undefined;
+            const safeCover =
+              typeof it.cover === "string" && /^https?:\/\//.test(it.cover) ? it.cover : undefined;
+
             return (
               <article
                 key={it.slug}
-                className="group overflow-hidden rounded-2xl border shadow-sm bg-white/50 backdrop-blur transition hover:shadow-md"
+                className="h-full flex flex-col overflow-hidden rounded-2xl border shadow-sm bg-white/60 backdrop-blur-sm transition hover:shadow-md"
               >
                 {safeCover && (
                   <div className="relative w-full aspect-[16/9]">
@@ -61,17 +63,31 @@ export default async function BlogIndex() {
                   </div>
                 )}
 
-                <div className="p-4">
+                <div className="p-4 flex-1 flex flex-col">
                   <h2 className="text-lg font-semibold leading-tight">
                     <Link href={`/blog/${it.slug}`} className="hover:underline">
                       {it.title}
                     </Link>
                   </h2>
-                  {it.excerpt && <p className="mt-2 text-sm opacity-80">{it.excerpt}</p>}
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    {it.date && <span className="text-xs opacity-70">{it.date}</span>}
-                    {it.tags?.slice(0, 2).map((t) => (
-                      <span key={t} className="text-[11px] rounded-full border px-2 py-0.5 opacity-80">{t}</span>
+
+                  {it.excerpt && (
+                    <p className="mt-2 text-sm opacity-80 min-h-[3.5rem]">
+                      {it.excerpt}
+                    </p>
+                  )}
+
+                  {/* Meta en bas pour uniformiser la hauteur */}
+                  <div className="mt-auto pt-3 flex flex-wrap items-center gap-2">
+                    {it.date && (
+                      <span className="text-xs opacity-70">{it.date}</span>
+                    )}
+                    {it.tags?.map((t) => (
+                      <span
+                        key={t}
+                        className="text-[11px] rounded-full border px-2 py-0.5 opacity-80"
+                      >
+                        {t}
+                      </span>
                     ))}
                   </div>
                 </div>
